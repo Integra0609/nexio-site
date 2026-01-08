@@ -1,11 +1,7 @@
 import { useMemo, useState } from "react";
 
-/**
- * ✅ SUPABASE EDGE FUNCTION URL (TAM)
- * Senin project ref: lpoxlbbcmpxbfpfrufvf
- */
-const SUPABASE_FN_URL =
-  "https://lpoxlbbcmpxbfpfrufvf.supabase.co/functions/v1/get-player-insights";
+const SUPABASE_PROJECT_REF = "lpoxlbbcmpxbfpfrufvf";
+const SUPABASE_FN_URL = `https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/get-player-insights`;
 
 const regions = [
   { value: "tr1", label: "TR (tr1)" },
@@ -13,6 +9,12 @@ const regions = [
   { value: "na1", label: "NA (na1)" },
   { value: "kr", label: "KR (kr)" },
 ];
+
+function clampPct(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(100, x));
+}
 
 function StatCard({ title, value, sub }) {
   return (
@@ -24,77 +26,73 @@ function StatCard({ title, value, sub }) {
   );
 }
 
-function RoleBars({ roles }) {
-  if (!roles?.length) return <div style={styles.muted}>Veri yok</div>;
+function RoleBars({ roles = [] }) {
+  const normalized = (roles || [])
+    .map((r) => ({
+      role: String(r.role || "UNKNOWN"),
+      pct: clampPct(r.pct),
+      count: Number(r.count || 0),
+    }))
+    .sort((a, b) => b.pct - a.pct);
 
-  // pct’e göre büyükten küçüğe
-  const sorted = [...roles].sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
+  if (!normalized.length) {
+    return <div style={styles.muted}>No role data available yet.</div>;
+  }
 
   return (
-    <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
-      {sorted.map((r) => {
-        const pct = Math.max(0, Math.min(100, Number(r.pct ?? 0)));
-        const count = Number(r.count ?? 0);
-
-        return (
-          <div key={r.role} style={styles.roleRow}>
-            <div style={styles.roleMeta}>
-              <div style={styles.roleName2}>{r.role}</div>
-              <div style={styles.roleSmall}>
-                {count} match • {pct}%
-              </div>
-            </div>
-
-            <div style={styles.barTrack}>
-              <div
-                style={{
-                  ...styles.barFill,
-                  width: `${pct}%`,
-                }}
-              />
+    <div style={styles.roleList}>
+      {normalized.map((r) => (
+        <div key={r.role} style={styles.roleRow}>
+          <div style={styles.roleLeft}>
+            <div style={styles.roleName}>{r.role}</div>
+            <div style={styles.roleSmall}>
+              {r.count} match • {r.pct}%
             </div>
           </div>
-        );
-      })}
+
+          <div style={styles.roleBarTrack}>
+            <div style={{ ...styles.roleBarFill, width: `${r.pct}%` }} />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
 
 function BestChampionBreakdown({ bestChamp }) {
-  if (!bestChamp)
+  if (!bestChamp) {
     return (
-      <div style={styles.breakdownEmpty}>
-        Not enough data yet for a best champion.
+      <div style={styles.breakEmpty}>
+        Not enough data yet to determine a best champion.
       </div>
     );
+  }
 
-  // bestChamp beklenen örnek: { champion_name, games, avg_kda }
-  const name = bestChamp.champion_name || "-";
-  const games = bestChamp.games ?? "-";
-  const avgKda = bestChamp.avg_kda ?? "-";
+  const name = bestChamp?.champion_name || "-";
+  const games = bestChamp?.games ?? "-";
+  const avgKda = bestChamp?.avg_kda ?? "-";
 
   return (
-    <div style={styles.breakdownCard}>
-      <div style={styles.breakdownTop}>
-        <div style={styles.breakdownLeft}>
-          <div style={styles.champIcon}>{name?.slice(0, 1) || "C"}</div>
+    <div style={styles.breakCard}>
+      <div style={styles.breakTop}>
+        <div style={styles.breakLeft}>
+          <div style={styles.champIcon}>{String(name).slice(0, 1)}</div>
           <div>
-            <div style={styles.breakdownTitle}>{name}</div>
-            <div style={styles.breakdownSub}>Best champion (recent)</div>
+            <div style={styles.breakTitle}>{name}</div>
+            <div style={styles.breakSub}>Best champion (recent sample)</div>
           </div>
         </div>
-
         <div style={styles.pill}>READY</div>
       </div>
 
-      <div style={styles.breakdownGrid}>
-        <div style={styles.breakdownItem}>
-          <div style={styles.breakdownLabel}>Games</div>
-          <div style={styles.breakdownValue}>{games}</div>
+      <div style={styles.breakGrid}>
+        <div style={styles.breakItem}>
+          <div style={styles.breakLabel}>Games</div>
+          <div style={styles.breakValue}>{games}</div>
         </div>
-        <div style={styles.breakdownItem}>
-          <div style={styles.breakdownLabel}>Avg KDA</div>
-          <div style={styles.breakdownValue}>{avgKda}</div>
+        <div style={styles.breakItem}>
+          <div style={styles.breakLabel}>Avg KDA</div>
+          <div style={styles.breakValue}>{avgKda}</div>
         </div>
       </div>
     </div>
@@ -117,12 +115,13 @@ export default function Demo() {
     const roles = raw.insights.role_distribution ?? [];
 
     return {
+      ok: !!raw.ok,
+      source: raw.source || "demo",
       sampleSize: s,
       last10,
       bestChamp,
       roles,
-      puuid: raw.puuid,
-      ok: raw.ok,
+      puuid: raw.puuid || null,
     };
   }, [raw]);
 
@@ -132,7 +131,7 @@ export default function Demo() {
 
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Summoner name gerekli.");
+      setError("Please enter a summoner name.");
       return;
     }
 
@@ -142,16 +141,30 @@ export default function Demo() {
         trimmed
       )}&region=${encodeURIComponent(region)}`;
 
-      const res = await fetch(url);
-      const data = await res.json();
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 12000);
+
+      const res = await fetch(url, { method: "GET", signal: controller.signal }).finally(
+        () => clearTimeout(t)
+      );
+
+      const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        throw new Error(data?.error || "Request failed");
+        const msg =
+          data?.error ||
+          data?.message ||
+          `Request failed (HTTP ${res.status})`;
+        throw new Error(msg);
       }
 
       setRaw(data);
     } catch (e) {
-      setError(e?.message || "Bir hata oluştu.");
+      const msg =
+        e?.name === "AbortError"
+          ? "Request timed out. Please try again."
+          : e?.message || "Failed to fetch.";
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -168,11 +181,10 @@ export default function Demo() {
           <div style={styles.badge}>DEMO</div>
           <h1 style={styles.h1}>Nexio.gg Insights</h1>
           <p style={styles.p}>
-            Post-match performance insights using publicly available game data.
+            Post-match performance insights based on recently available public match data.
           </p>
           <p style={{ ...styles.p, marginTop: 6 }}>
-            This demo uses limited-rate development API access. Data may be
-            partial or incomplete.
+            This demo uses limited-rate development API access. Results may be partial and are shown for demonstration purposes only.
           </p>
         </header>
 
@@ -184,7 +196,7 @@ export default function Demo() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={onEnter}
-                placeholder="örn: faker"
+                placeholder="e.g. faker"
                 style={styles.input}
                 autoComplete="off"
               />
@@ -212,11 +224,11 @@ export default function Demo() {
                 disabled={loading}
                 style={{
                   ...styles.button,
-                  opacity: loading ? 0.7 : 1,
+                  opacity: loading ? 0.75 : 1,
                   cursor: loading ? "not-allowed" : "pointer",
                 }}
               >
-                {loading ? "Running..." : "Run"}
+                {loading ? "Analyzing..." : "Run"}
               </button>
             </div>
           </div>
@@ -233,14 +245,13 @@ export default function Demo() {
                 <div>
                   <div style={styles.resultTitle}>Result</div>
                   <div style={styles.resultMeta}>
-                    Displayed data is based on recent available matches and may
-                    not represent full account history.
+                    Insights are derived from a limited recent match sample and may not represent full account history.
                   </div>
                 </div>
 
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <div style={styles.pillSmall}>DEMO</div>
-                  <div style={styles.okBadge}>{parsed.ok ? "OK" : "NOT OK"}</div>
+                  <div style={styles.sourcePill}>{String(parsed.source).toUpperCase()}</div>
+                  <div style={styles.okBadge}>{parsed.ok ? "OK" : "CHECK"}</div>
                 </div>
               </div>
 
@@ -252,7 +263,7 @@ export default function Demo() {
                 />
 
                 <StatCard
-                  title="Last 10 KDA"
+                  title="Recent KDA"
                   value={parsed.last10?.kda != null ? parsed.last10.kda : "-"}
                   sub={
                     parsed.last10
@@ -264,61 +275,59 @@ export default function Demo() {
                 <StatCard
                   title="Best champion"
                   value={parsed.bestChamp?.champion_name || "-"}
-                  sub={parsed.bestChamp ? "Based on recent games" : "Not enough data yet"}
+                  sub={parsed.bestChamp ? "Based on recent sample" : "Not enough data yet"}
                 />
               </div>
 
               <div style={{ marginTop: 18 }}>
                 <div style={styles.sectionTitle}>Best champion breakdown</div>
-                <BestChampionBreakdown bestChamp={parsed.bestChamp} />
+                <div style={styles.subCard}>
+                  <BestChampionBreakdown bestChamp={parsed.bestChamp} />
+                </div>
               </div>
 
               <div style={{ marginTop: 18 }}>
                 <div style={styles.sectionTitle}>Role distribution</div>
-                <RoleBars roles={parsed.roles} />
+                <div style={styles.subCard}>
+                  <RoleBars roles={parsed.roles} />
+                </div>
               </div>
             </>
           ) : (
             <div style={styles.helper}>
               <div style={styles.helperTitle}>Quick test</div>
               <div style={styles.helperText}>
-                Summoner yaz → region seç → <strong>Run</strong>. Sonuçlar kartlar
-                halinde gelir.
+                Enter a summoner → pick a region → <strong>Run</strong>.
               </div>
             </div>
           )}
         </section>
 
-        <section style={{ ...styles.card, marginTop: 18 }}>
-          <div style={styles.sectionTitle}>(Disclaimer)</div>
+        <section style={styles.disclaimerCard}>
+          <div style={styles.disclaimerTitle}>Disclaimer</div>
           <div style={styles.disclaimerText}>
-            Nexio.gg is not affiliated with, endorsed, sponsored, or approved by
-            Riot Games.
+            Nexio.gg is not affiliated with, endorsed, sponsored, or approved by Riot Games.
+            This product does not provide real-time assistance, automation, gameplay modification,
+            or competitive advantage.
           </div>
 
           <div style={styles.chips}>
-            <div style={styles.chip}>No real-time in-game assistance</div>
-            <div style={styles.chip}>No automation or scripting</div>
-            <div style={styles.chip}>No betting / gambling</div>
+            <div style={styles.chip}>Post-match only</div>
+            <div style={styles.chip}>No real-time assistance</div>
+            <div style={styles.chip}>No automation</div>
             <div style={styles.chip}>No gameplay modification</div>
             <div style={styles.chip}>No competitive advantage</div>
           </div>
         </section>
 
         <footer style={styles.footer}>
-          <div style={styles.footerSmall}>Nexio.gg is not affiliated with Riot Games.</div>
+          <div style={styles.footerSmall}>© {new Date().getFullYear()} Nexio.gg</div>
           <div style={styles.footerLinks}>
-            <a href="/" style={styles.link}>
-              Home
-            </a>
+            <a href="/" style={styles.link}>Home</a>
             <span style={styles.dot}>•</span>
-            <a href="/terms" style={styles.link}>
-              Terms
-            </a>
+            <a href="/terms" style={styles.link}>Terms</a>
             <span style={styles.dot}>•</span>
-            <a href="/privacy" style={styles.link}>
-              Privacy
-            </a>
+            <a href="/privacy" style={styles.link}>Privacy</a>
           </div>
         </footer>
       </div>
@@ -334,10 +343,11 @@ const styles = {
     color: "#e8eefc",
   },
   container: {
-    maxWidth: 980,
+    maxWidth: 1040,
     margin: "0 auto",
-    padding: "48px 20px 28px",
+    padding: "44px 20px 28px",
   },
+
   header: { marginBottom: 18 },
   badge: {
     display: "inline-block",
@@ -348,14 +358,8 @@ const styles = {
     fontSize: 12,
     letterSpacing: 1,
   },
-  h1: {
-    margin: "12px 0 8px",
-    fontSize: 46,
-    lineHeight: 1.05,
-    fontFamily:
-      'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
-  },
-  p: { margin: 0, color: "rgba(232,238,252,0.75)", maxWidth: 760 },
+  h1: { margin: "12px 0 8px", fontSize: 40, lineHeight: 1.1 },
+  p: { margin: 0, color: "rgba(232,238,252,0.75)", maxWidth: 820 },
 
   card: {
     marginTop: 18,
@@ -373,8 +377,8 @@ const styles = {
     flexWrap: "wrap",
     alignItems: "flex-end",
   },
-  field: { flex: "1 1 320px", minWidth: 240 },
-  fieldSmall: { flex: "0 0 180px", minWidth: 160 },
+  field: { flex: "1 1 340px", minWidth: 240 },
+  fieldSmall: { flex: "0 0 190px", minWidth: 160 },
   label: {
     display: "block",
     fontSize: 12,
@@ -407,7 +411,7 @@ const styles = {
     background:
       "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
     color: "#fff",
-    fontWeight: 800,
+    fontWeight: 900,
   },
 
   alertError: {
@@ -439,15 +443,17 @@ const styles = {
     borderTop: "1px solid rgba(255,255,255,0.10)",
   },
   resultTitle: { fontWeight: 900, fontSize: 14 },
-  resultMeta: { marginTop: 6, color: "rgba(232,238,252,0.75)", fontSize: 12 },
+  resultMeta: { marginTop: 6, color: "rgba(232,238,252,0.70)", fontSize: 12 },
 
-  pillSmall: {
+  sourcePill: {
     padding: "6px 10px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(255,255,255,0.06)",
+    background: "rgba(0,0,0,0.18)",
     fontWeight: 900,
-    fontSize: 12,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    color: "rgba(232,238,252,0.9)",
   },
   okBadge: {
     padding: "6px 10px",
@@ -460,7 +466,7 @@ const styles = {
 
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
     gap: 12,
     marginTop: 14,
   },
@@ -471,60 +477,28 @@ const styles = {
     padding: 14,
   },
   statTitle: { fontSize: 12, color: "rgba(232,238,252,0.72)" },
-  statValue: { fontSize: 26, fontWeight: 900, marginTop: 6 },
+  statValue: { fontSize: 24, fontWeight: 950, marginTop: 6 },
   statSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.65)" },
 
-  sectionTitle: { marginTop: 10, fontWeight: 900, fontSize: 13 },
-  muted: { color: "rgba(232,238,252,0.6)" },
+  sectionTitle: { marginTop: 12, fontWeight: 950, fontSize: 13 },
 
-  roleRow: {
-    display: "grid",
-    gridTemplateColumns: "160px 1fr",
-    gap: 12,
-    alignItems: "center",
-  },
-  roleMeta: { display: "grid", gap: 4 },
-  roleName2: { fontWeight: 900, letterSpacing: 0.2 },
-  roleSmall: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
-
-  barTrack: {
-    height: 12,
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.22)",
-    overflow: "hidden",
-  },
-  barFill: {
-    height: "100%",
-    borderRadius: 999,
-    background:
-      "linear-gradient(90deg, rgba(124,58,237,0.95), rgba(59,130,246,0.9), rgba(34,211,238,0.9))",
-    boxShadow: "0 0 18px rgba(59,130,246,0.35)",
-  },
-
-  breakdownEmpty: {
+  subCard: {
     marginTop: 10,
-    borderRadius: 14,
+    borderRadius: 16,
     border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.03)",
+    background: "rgba(0,0,0,0.16)",
     padding: 14,
-    color: "rgba(232,238,252,0.72)",
   },
 
-  breakdownCard: {
-    marginTop: 10,
+  breakEmpty: { fontSize: 12, color: "rgba(232,238,252,0.72)" },
+  breakCard: {
     borderRadius: 16,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.03)",
     padding: 14,
   },
-  breakdownTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  breakdownLeft: { display: "flex", alignItems: "center", gap: 12 },
+  breakTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  breakLeft: { display: "flex", alignItems: "center", gap: 12 },
   champIcon: {
     width: 40,
     height: 40,
@@ -534,48 +508,72 @@ const styles = {
       "linear-gradient(135deg, rgba(124,58,237,0.35), rgba(59,130,246,0.25))",
     display: "grid",
     placeItems: "center",
-    fontWeight: 900,
+    fontWeight: 950,
   },
-  breakdownTitle: { fontWeight: 900 },
-  breakdownSub: { fontSize: 12, color: "rgba(232,238,252,0.65)", marginTop: 2 },
+  breakTitle: { fontWeight: 950 },
+  breakSub: { fontSize: 12, color: "rgba(232,238,252,0.68)", marginTop: 2 },
   pill: {
     padding: "6px 10px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.12)",
     background: "rgba(0,0,0,0.22)",
-    fontWeight: 900,
+    fontWeight: 950,
     fontSize: 12,
   },
-  breakdownGrid: {
-    marginTop: 12,
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 12,
-  },
-  breakdownItem: {
+  breakGrid: { marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
+  breakItem: {
     borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(0,0,0,0.18)",
     padding: 12,
   },
-  breakdownLabel: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
-  breakdownValue: { marginTop: 6, fontWeight: 900 },
+  breakLabel: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
+  breakValue: { marginTop: 6, fontWeight: 950 },
 
-  disclaimerText: { marginTop: 8, color: "rgba(232,238,252,0.75)" },
-  chips: {
-    marginTop: 14,
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  chip: {
-    padding: "10px 12px",
+  roleList: { display: "flex", flexDirection: "column", gap: 12 },
+  roleRow: { display: "grid", gridTemplateColumns: "160px 1fr", gap: 12, alignItems: "center" },
+  roleLeft: { minWidth: 0 },
+  roleName: { fontWeight: 950, fontSize: 12, letterSpacing: 0.4 },
+  roleSmall: { marginTop: 4, fontSize: 12, color: "rgba(232,238,252,0.68)" },
+  roleBarTrack: {
+    width: "100%",
+    height: 12,
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.22)",
-    fontWeight: 800,
-    fontSize: 12,
+    background: "rgba(255,255,255,0.04)",
+    overflow: "hidden",
+  },
+  roleBarFill: {
+    height: "100%",
+    borderRadius: 999,
+    background:
+      "linear-gradient(90deg, rgba(124,58,237,0.95), rgba(59,130,246,0.9), rgba(34,211,238,0.9))",
+    boxShadow: "0 0 18px rgba(59,130,246,0.35)",
+    transition: "width 550ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+  },
+
+  muted: { color: "rgba(232,238,252,0.6)" },
+
+  disclaimerCard: {
+    marginTop: 14,
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.03)",
+    padding: 18,
+    boxShadow: "0 20px 80px rgba(0,0,0,0.25)",
+    backdropFilter: "blur(10px)",
+  },
+  disclaimerTitle: { fontWeight: 950, fontSize: 18, marginBottom: 8 },
+  disclaimerText: { color: "rgba(232,238,252,0.78)", fontSize: 13, maxWidth: 900 },
+  chips: { marginTop: 12, display: "flex", flexWrap: "wrap", gap: 10 },
+  chip: {
+    padding: "8px 10px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(0,0,0,0.20)",
     color: "rgba(232,238,252,0.85)",
+    fontSize: 12,
+    fontWeight: 900,
   },
 
   footer: {
@@ -590,6 +588,6 @@ const styles = {
   },
   footerSmall: { opacity: 0.9 },
   footerLinks: { display: "flex", alignItems: "center", gap: 10 },
-  link: { color: "rgba(232,238,252,0.80)", textDecoration: "none" },
+  link: { color: "rgba(232,238,252,0.86)", textDecoration: "none", fontWeight: 800 },
   dot: { opacity: 0.6 },
 };
