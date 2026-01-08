@@ -1,8 +1,31 @@
 // pages/_app.js
 import Head from "next/head";
+import { useState } from "react";
 
 export default function App({ Component, pageProps, router }) {
+  const [hovered, setHovered] = useState(null);
   const isActive = (href) => router?.pathname === href;
+
+  const navStyle = (href) => {
+    const active = isActive(href);
+    const hover = hovered === href;
+
+    if (active) {
+      return {
+        ...styles.navLink,
+        ...styles.navActive,
+      };
+    }
+
+    if (hover) {
+      return {
+        ...styles.navLink,
+        ...styles.navHover,
+      };
+    }
+
+    return styles.navLink;
+  };
 
   return (
     <>
@@ -10,14 +33,12 @@ export default function App({ Component, pageProps, router }) {
         <title>Nexio.gg</title>
         <meta name="description" content="AI-powered post-match esports analytics." />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-        {/* Favicons */}
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/favicon.svg" />
       </Head>
 
       <div style={styles.shell}>
-        {/* GLOBAL HEADER */}
+        {/* HEADER */}
         <header style={styles.header}>
           <div style={styles.headerInner}>
             <a href="/" style={styles.brand}>
@@ -28,71 +49,46 @@ export default function App({ Component, pageProps, router }) {
                 height={40}
                 style={styles.logoImg}
               />
-              <div style={{ display: "grid", gap: 2 }}>
+              <div>
                 <div style={styles.brandName}>Nexio.gg</div>
                 <div style={styles.brandSub}>AI-powered esports analytics</div>
               </div>
             </a>
 
             <nav style={styles.nav}>
-              <a
-                href="/"
-                style={{
-                  ...styles.navLink,
-                  ...(isActive("/") ? styles.navActive : null),
-                }}
-              >
-                Home
-              </a>
-              <a
-                href="/demo"
-                style={{
-                  ...styles.navLink,
-                  ...(isActive("/demo") ? styles.navActive : null),
-                }}
-              >
-                Demo
-              </a>
-              <a
-                href="/how-it-works"
-                style={{
-                  ...styles.navLink,
-                  ...(isActive("/how-it-works") ? styles.navActive : null),
-                }}
-              >
-                How it works
-              </a>
-              <a
-                href="/about"
-                style={{
-                  ...styles.navLink,
-                  ...(isActive("/about") ? styles.navActive : null),
-                }}
-              >
-                About
-              </a>
+              {[
+                { href: "/", label: "Home" },
+                { href: "/demo", label: "Demo" },
+                { href: "/how-it-works", label: "How it works" },
+                { href: "/about", label: "About" },
+              ].map((item) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  style={navStyle(item.href)}
+                  onMouseEnter={() => setHovered(item.href)}
+                  onMouseLeave={() => setHovered(null)}
+                >
+                  {item.label}
+                </a>
+              ))}
             </nav>
           </div>
         </header>
 
-        {/* PAGE CONTENT */}
+        {/* PAGE */}
         <div style={styles.content}>
           <Component {...pageProps} />
         </div>
 
-        {/* GLOBAL FOOTER */}
+        {/* FOOTER */}
         <footer style={styles.footer}>
           <div style={styles.footerInner}>
-            <div style={styles.footerLeft}>© {new Date().getFullYear()} Nexio.gg</div>
-
+            <div>© {new Date().getFullYear()} Nexio.gg</div>
             <div style={styles.footerRight}>
-              <a href="/terms" style={styles.footerLink}>
-                Terms
-              </a>
+              <a href="/terms" style={styles.footerLink}>Terms</a>
               <span style={styles.dot}>•</span>
-              <a href="/privacy" style={styles.footerLink}>
-                Privacy
-              </a>
+              <a href="/privacy" style={styles.footerLink}>Privacy</a>
               <span style={styles.dot}>•</span>
               <span style={styles.footerMuted}>Not affiliated with Riot Games</span>
             </div>
@@ -106,12 +102,11 @@ export default function App({ Component, pageProps, router }) {
 const styles = {
   shell: { minHeight: "100vh", backgroundColor: "#0B1020" },
 
-  // Header: deeper Nexio tone + premium blur
   header: {
     position: "sticky",
     top: 0,
     zIndex: 50,
-    background: "rgba(11,16,32,0.86)", // #0B1020 with premium opacity
+    background: "rgba(11,16,32,0.86)",
     borderBottom: "1px solid rgba(255,255,255,0.08)",
     backdropFilter: "blur(14px)",
   },
@@ -120,9 +115,10 @@ const styles = {
     margin: "0 auto",
     padding: "12px 16px",
     display: "flex",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     gap: 14,
+    flexWrap: "wrap", // mobile wrap
   },
 
   brand: {
@@ -138,41 +134,40 @@ const styles = {
     background: "rgba(255,255,255,0.06)",
     boxShadow: "0 12px 34px rgba(0,0,0,0.45)",
   },
-  brandName: { fontWeight: 950, letterSpacing: 0.2, color: "#E8EEFC" },
-  brandSub: { fontSize: 12, color: "rgba(232,238,252,0.70)" },
+  brandName: { fontWeight: 950 },
+  brandSub: { fontSize: 12, color: "rgba(232,238,252,0.7)" },
 
   nav: {
     display: "flex",
-    alignItems: "center",
-    gap: 10,
+    gap: 8,
     flexWrap: "wrap",
     justifyContent: "flex-end",
   },
 
-  // Base nav link: calmer, more premium
   navLink: {
-    textDecoration: "none",
-    color: "rgba(232,238,252,0.78)",
+    padding: "8px 12px",
+    borderRadius: 12,
     fontSize: 13,
     fontWeight: 850,
-    padding: "8px 10px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.00)",
-    background: "rgba(255,255,255,0.00)",
-    transition: "background 180ms ease, border-color 180ms ease, color 180ms ease",
+    textDecoration: "none",
+    color: "rgba(232,238,252,0.78)",
+    transition: "all 180ms ease",
   },
 
-  // Active: violet-tinted (Nexio DNA)
-  navActive: {
+  navHover: {
+    background: "rgba(255,255,255,0.06)",
     color: "#E8EEFC",
-    background: "rgba(124,58,237,0.16)", // violet
+  },
+
+  navActive: {
+    background: "rgba(124,58,237,0.16)",
     border: "1px solid rgba(124,58,237,0.35)",
+    color: "#E8EEFC",
     boxShadow: "0 10px 28px rgba(124,58,237,0.12)",
   },
 
   content: { minHeight: "calc(100vh - 140px)" },
 
-  // Footer: consistent depth
   footer: {
     borderTop: "1px solid rgba(255,255,255,0.08)",
     background: "rgba(11,16,32,0.74)",
@@ -183,15 +178,13 @@ const styles = {
     margin: "0 auto",
     padding: "14px 16px",
     display: "flex",
-    alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
     flexWrap: "wrap",
-    color: "rgba(232,238,252,0.65)",
+    gap: 12,
     fontSize: 12,
+    color: "rgba(232,238,252,0.65)",
   },
-  footerLeft: { opacity: 0.95, color: "rgba(232,238,252,0.70)" },
-  footerRight: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
+  footerRight: { display: "flex", gap: 10, flexWrap: "wrap" },
   footerLink: {
     color: "rgba(232,238,252,0.82)",
     textDecoration: "none",
