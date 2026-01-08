@@ -1,22 +1,11 @@
 import { useMemo, useState } from "react";
 
 /**
- * =========================================================
- * Nexio.gg /demo — UI FINAL (premium)
- * - Role distribution mini bar chart (animated)
- * - Best champion card with icon + mini breakdown
- * - Clean result header + disclaimer chips
- * - Robust fetch + clearer errors
- * =========================================================
+ * ✅ SUPABASE EDGE FUNCTION URL (TAM)
+ * Senin project ref: lpoxlbbcmpxbfpfrufvf
  */
-
-/** ✅ Supabase Edge Function config */
-const SUPABASE_PROJECT_REF = "lpoxlbbcmpxbfpfrufvf";
-const SUPABASE_FN_URL = `https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/get-player-insights`;
-
-/** (Optional) DDragon champion icon (best_champion varsa) */
-const DDRAGON_ICON_BASE =
-  "https://ddragon.leagueoflegends.com/cdn/14.1.1/img/champion";
+const SUPABASE_FN_URL =
+  "https://lpoxlbbcmpxbfpfrufvf.supabase.co/functions/v1/get-player-insights";
 
 const regions = [
   { value: "tr1", label: "TR (tr1)" },
@@ -24,33 +13,6 @@ const regions = [
   { value: "na1", label: "NA (na1)" },
   { value: "kr", label: "KR (kr)" },
 ];
-
-function clampPct(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(100, x));
-}
-
-function pickRoleLabel(role) {
-  const r = String(role || "").toUpperCase();
-  if (r === "TOP") return "TOP";
-  if (r === "JUNGLE") return "JUNGLE";
-  if (r === "MIDDLE" || r === "MID") return "MIDDLE";
-  if (r === "BOTTOM" || r === "BOT") return "BOTTOM";
-  if (r === "UTILITY" || r === "SUPPORT") return "SUPPORT";
-  return r || "UNKNOWN";
-}
-
-function roleGradient(role) {
-  const r = String(role || "").toUpperCase();
-  // subtle differences so it feels premium without being loud
-  if (r === "TOP") return "linear-gradient(90deg, rgba(168,85,247,0.95), rgba(59,130,246,0.85))";
-  if (r === "JUNGLE") return "linear-gradient(90deg, rgba(34,211,238,0.90), rgba(59,130,246,0.80))";
-  if (r === "MIDDLE" || r === "MID") return "linear-gradient(90deg, rgba(124,58,237,0.95), rgba(59,130,246,0.85))";
-  if (r === "BOTTOM" || r === "BOT") return "linear-gradient(90deg, rgba(59,130,246,0.90), rgba(34,211,238,0.80))";
-  if (r === "UTILITY" || r === "SUPPORT") return "linear-gradient(90deg, rgba(99,102,241,0.90), rgba(124,58,237,0.80))";
-  return "linear-gradient(90deg, rgba(124,58,237,0.90), rgba(59,130,246,0.80))";
-}
 
 function StatCard({ title, value, sub }) {
   return (
@@ -62,132 +24,85 @@ function StatCard({ title, value, sub }) {
   );
 }
 
-function SkeletonLine({ w = "100%" }) {
-  return <div style={{ ...styles.skel, width: w }} />;
-}
+function RoleBars({ roles }) {
+  if (!roles?.length) return <div style={styles.muted}>Veri yok</div>;
 
-function ChampionCard({ bestChamp }) {
-  const champName = bestChamp?.champion_name || null;
-
-  const iconUrl = champName
-    ? `${DDRAGON_ICON_BASE}/${encodeURIComponent(champName)}.png`
-    : null;
+  // pct’e göre büyükten küçüğe
+  const sorted = [...roles].sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
 
   return (
-    <div style={styles.champBlock}>
-      <div style={styles.champRow}>
-        <div style={styles.champIconWrap}>
-          {iconUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={iconUrl}
-              alt={champName}
-              style={styles.champIcon}
-              onError={(e) => {
-                // fallback: hide broken image -> show placeholder
-                e.currentTarget.style.display = "none";
-              }}
-            />
-          ) : null}
-          {!iconUrl ? (
-            <div style={styles.champIconPlaceholder} aria-hidden="true">
-              {/* simple placeholder glyph */}
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M12 2l3 6 6 .9-4.3 4.2 1 6-5.7-3-5.7 3 1-6L3 8.9 9 8l3-6z"
-                  stroke="rgba(232,238,252,0.85)"
-                  strokeWidth="1.4"
-                />
-              </svg>
-            </div>
-          ) : null}
-        </div>
+    <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+      {sorted.map((r) => {
+        const pct = Math.max(0, Math.min(100, Number(r.pct ?? 0)));
+        const count = Number(r.count ?? 0);
 
-        <div style={{ minWidth: 0 }}>
-          <div style={styles.champTitle}>
-            {champName ? champName : "Not enough data yet"}
-          </div>
-          <div style={styles.champMeta}>
-            {champName
-              ? "Best champion (recent)"
-              : "We’ll show this once sample size is sufficient."}
-          </div>
-        </div>
-
-        <div style={styles.champBadge}>
-          {champName ? "READY" : "PENDING"}
-        </div>
-      </div>
-
-      <div style={styles.champBreakdown}>
-        {champName ? (
-          <>
-            <div style={styles.breakRow}>
-              <div style={styles.breakLabel}>Games</div>
-              <div style={styles.breakValue}>{bestChamp?.games ?? "-"}</div>
-            </div>
-            <div style={styles.breakRow}>
-              <div style={styles.breakLabel}>Avg KDA</div>
-              <div style={styles.breakValue}>{bestChamp?.avg_kda ?? "-"}</div>
-            </div>
-            {bestChamp?.winrate_pct != null ? (
-              <div style={styles.breakRow}>
-                <div style={styles.breakLabel}>Winrate</div>
-                <div style={styles.breakValue}>{bestChamp.winrate_pct}%</div>
+        return (
+          <div key={r.role} style={styles.roleRow}>
+            <div style={styles.roleMeta}>
+              <div style={styles.roleName2}>{r.role}</div>
+              <div style={styles.roleSmall}>
+                {count} match • {pct}%
               </div>
-            ) : null}
-          </>
-        ) : (
-          <div style={styles.breakEmpty}>
-            Not enough data yet for a best champion.
+            </div>
+
+            <div style={styles.barTrack}>
+              <div
+                style={{
+                  ...styles.barFill,
+                  width: `${pct}%`,
+                }}
+              />
+            </div>
           </div>
-        )}
-      </div>
+        );
+      })}
     </div>
   );
 }
 
-function RoleBars({ roles = [] }) {
-  const normalized = (roles || [])
-    .map((r) => ({
-      role: pickRoleLabel(r.role),
-      pct: clampPct(r.pct),
-      count: r.count ?? 0,
-    }))
-    .sort((a, b) => b.pct - a.pct);
+function BestChampionBreakdown({ bestChamp }) {
+  if (!bestChamp)
+    return (
+      <div style={styles.breakdownEmpty}>
+        Not enough data yet for a best champion.
+      </div>
+    );
 
-  if (!normalized.length) {
-    return <div style={styles.muted}>No role data available.</div>;
-  }
+  // bestChamp beklenen örnek: { champion_name, games, avg_kda }
+  const name = bestChamp.champion_name || "-";
+  const games = bestChamp.games ?? "-";
+  const avgKda = bestChamp.avg_kda ?? "-";
 
   return (
-    <div style={styles.roleList}>
-      {normalized.map((r) => (
-        <div key={r.role} style={styles.roleRow}>
-          <div style={styles.roleLeft}>
-            <div style={styles.roleName}>{r.role}</div>
-            <div style={styles.roleSmall}>
-              {r.count} match • {r.pct}%
-            </div>
-          </div>
-
-          <div style={styles.roleBarTrack}>
-            <div
-              style={{
-                ...styles.roleBarFill,
-                width: `${r.pct}%`,
-                background: roleGradient(r.role),
-              }}
-            />
+    <div style={styles.breakdownCard}>
+      <div style={styles.breakdownTop}>
+        <div style={styles.breakdownLeft}>
+          <div style={styles.champIcon}>{name?.slice(0, 1) || "C"}</div>
+          <div>
+            <div style={styles.breakdownTitle}>{name}</div>
+            <div style={styles.breakdownSub}>Best champion (recent)</div>
           </div>
         </div>
-      ))}
+
+        <div style={styles.pill}>READY</div>
+      </div>
+
+      <div style={styles.breakdownGrid}>
+        <div style={styles.breakdownItem}>
+          <div style={styles.breakdownLabel}>Games</div>
+          <div style={styles.breakdownValue}>{games}</div>
+        </div>
+        <div style={styles.breakdownItem}>
+          <div style={styles.breakdownLabel}>Avg KDA</div>
+          <div style={styles.breakdownValue}>{avgKda}</div>
+        </div>
+      </div>
     </div>
   );
 }
 
 export default function Demo() {
-  const [name, setName] = useState("faker");
+  const [name, setName] = useState("");
   const [region, setRegion] = useState("tr1");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -202,13 +117,12 @@ export default function Demo() {
     const roles = raw.insights.role_distribution ?? [];
 
     return {
-      ok: !!raw.ok,
-      source: raw.source || null,
       sampleSize: s,
       last10,
       bestChamp,
       roles,
       puuid: raw.puuid,
+      ok: raw.ok,
     };
   }, [raw]);
 
@@ -218,7 +132,7 @@ export default function Demo() {
 
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Summoner name is required.");
+      setError("Summoner name gerekli.");
       return;
     }
 
@@ -228,38 +142,16 @@ export default function Demo() {
         trimmed
       )}&region=${encodeURIComponent(region)}`;
 
-      // timeout (10s)
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), 10000);
-
-      const res = await fetch(url, {
-        method: "GET",
-        signal: controller.signal,
-      }).finally(() => clearTimeout(t));
-
-      let data = null;
-      try {
-        data = await res.json();
-      } catch {
-        // non-json response
-        data = null;
-      }
+      const res = await fetch(url);
+      const data = await res.json();
 
       if (!res.ok) {
-        const msg =
-          data?.error ||
-          data?.message ||
-          `Request failed (HTTP ${res.status})`;
-        throw new Error(msg);
+        throw new Error(data?.error || "Request failed");
       }
 
       setRaw(data);
     } catch (e) {
-      const msg =
-        e?.name === "AbortError"
-          ? "Request timed out. Try again."
-          : e?.message || "Failed to fetch.";
-      setError(msg);
+      setError(e?.message || "Bir hata oluştu.");
     } finally {
       setLoading(false);
     }
@@ -268,9 +160,6 @@ export default function Demo() {
   const onEnter = (e) => {
     if (e.key === "Enter") run();
   };
-
-  const resultHint =
-    "Displayed data is based on recent available matches and may not represent full account history.";
 
   return (
     <main style={styles.page}>
@@ -282,7 +171,8 @@ export default function Demo() {
             Post-match performance insights using publicly available game data.
           </p>
           <p style={{ ...styles.p, marginTop: 6 }}>
-            This demo uses limited-rate development API access. Data may be partial or incomplete.
+            This demo uses limited-rate development API access. Data may be
+            partial or incomplete.
           </p>
         </header>
 
@@ -294,7 +184,7 @@ export default function Demo() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={onEnter}
-                placeholder="e.g. faker"
+                placeholder="örn: faker"
                 style={styles.input}
                 autoComplete="off"
               />
@@ -322,7 +212,7 @@ export default function Demo() {
                 disabled={loading}
                 style={{
                   ...styles.button,
-                  opacity: loading ? 0.75 : 1,
+                  opacity: loading ? 0.7 : 1,
                   cursor: loading ? "not-allowed" : "pointer",
                 }}
               >
@@ -337,65 +227,19 @@ export default function Demo() {
             </div>
           ) : null}
 
-          {loading ? (
-            <div style={styles.loadingBlock}>
-              <div style={styles.resultHeader}>
-                <div>
-                  <div style={styles.resultTitle}>Result</div>
-                  <div style={styles.resultMeta}>{resultHint}</div>
-                </div>
-                <div style={styles.okBadge}>LOADING</div>
-              </div>
-
-              <div style={styles.grid}>
-                <div style={styles.statCard}>
-                  <div style={styles.statTitle}>Sample size</div>
-                  <SkeletonLine w="80px" />
-                  <SkeletonLine w="160px" />
-                </div>
-                <div style={styles.statCard}>
-                  <div style={styles.statTitle}>Last 10 KDA</div>
-                  <SkeletonLine w="80px" />
-                  <SkeletonLine w="140px" />
-                </div>
-                <div style={styles.statCard}>
-                  <div style={styles.statTitle}>Best champion</div>
-                  <SkeletonLine w="120px" />
-                  <SkeletonLine w="180px" />
-                </div>
-              </div>
-
-              <div style={{ marginTop: 18 }}>
-                <div style={styles.sectionTitle}>Best champion breakdown</div>
-                <div style={styles.subCard}>
-                  <SkeletonLine w="260px" />
-                  <SkeletonLine w="220px" />
-                </div>
-              </div>
-
-              <div style={{ marginTop: 18 }}>
-                <div style={styles.sectionTitle}>Role distribution</div>
-                <div style={styles.subCard}>
-                  <SkeletonLine w="70%" />
-                  <SkeletonLine w="55%" />
-                  <SkeletonLine w="40%" />
-                </div>
-              </div>
-            </div>
-          ) : parsed ? (
+          {parsed ? (
             <>
               <div style={styles.resultHeader}>
                 <div>
                   <div style={styles.resultTitle}>Result</div>
-                  <div style={styles.resultMeta}>{resultHint}</div>
+                  <div style={styles.resultMeta}>
+                    Displayed data is based on recent available matches and may
+                    not represent full account history.
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  {parsed.source ? (
-                    <div style={styles.sourcePill}>
-                      {String(parsed.source).toUpperCase()}
-                    </div>
-                  ) : null}
+                  <div style={styles.pillSmall}>DEMO</div>
                   <div style={styles.okBadge}>{parsed.ok ? "OK" : "NOT OK"}</div>
                 </div>
               </div>
@@ -426,38 +270,30 @@ export default function Demo() {
 
               <div style={{ marginTop: 18 }}>
                 <div style={styles.sectionTitle}>Best champion breakdown</div>
-                <div style={styles.subCard}>
-                  <ChampionCard bestChamp={parsed.bestChamp} />
-                </div>
+                <BestChampionBreakdown bestChamp={parsed.bestChamp} />
               </div>
 
               <div style={{ marginTop: 18 }}>
                 <div style={styles.sectionTitle}>Role distribution</div>
-                <div style={styles.subCard}>
-                  <RoleBars roles={parsed.roles} />
-                </div>
+                <RoleBars roles={parsed.roles} />
               </div>
-
-              <details style={styles.details}>
-                <summary style={styles.summary}>Raw JSON</summary>
-                <pre style={styles.pre}>{JSON.stringify(raw, null, 2)}</pre>
-              </details>
             </>
           ) : (
             <div style={styles.helper}>
               <div style={styles.helperTitle}>Quick test</div>
               <div style={styles.helperText}>
-                Type summoner → pick region → <strong>Run</strong>. Results will
-                appear as cards.
+                Summoner yaz → region seç → <strong>Run</strong>. Sonuçlar kartlar
+                halinde gelir.
               </div>
             </div>
           )}
         </section>
 
-        <section style={styles.disclaimerCard}>
-          <div style={styles.disclaimerTitle}>Disclaimer</div>
+        <section style={{ ...styles.card, marginTop: 18 }}>
+          <div style={styles.sectionTitle}>(Disclaimer)</div>
           <div style={styles.disclaimerText}>
-            Nexio.gg is not affiliated with, endorsed, sponsored, or approved by Riot Games.
+            Nexio.gg is not affiliated with, endorsed, sponsored, or approved by
+            Riot Games.
           </div>
 
           <div style={styles.chips}>
@@ -472,11 +308,17 @@ export default function Demo() {
         <footer style={styles.footer}>
           <div style={styles.footerSmall}>Nexio.gg is not affiliated with Riot Games.</div>
           <div style={styles.footerLinks}>
-            <a href="/" style={styles.link}>Home</a>
+            <a href="/" style={styles.link}>
+              Home
+            </a>
             <span style={styles.dot}>•</span>
-            <a href="/terms" style={styles.link}>Terms</a>
+            <a href="/terms" style={styles.link}>
+              Terms
+            </a>
             <span style={styles.dot}>•</span>
-            <a href="/privacy" style={styles.link}>Privacy</a>
+            <a href="/privacy" style={styles.link}>
+              Privacy
+            </a>
           </div>
         </footer>
       </div>
@@ -492,11 +334,10 @@ const styles = {
     color: "#e8eefc",
   },
   container: {
-    maxWidth: 1040,
+    maxWidth: 980,
     margin: "0 auto",
-    padding: "44px 20px 28px",
+    padding: "48px 20px 28px",
   },
-
   header: { marginBottom: 18 },
   badge: {
     display: "inline-block",
@@ -507,7 +348,13 @@ const styles = {
     fontSize: 12,
     letterSpacing: 1,
   },
-  h1: { margin: "14px 0 10px", fontSize: 44, lineHeight: 1.05 },
+  h1: {
+    margin: "12px 0 8px",
+    fontSize: 46,
+    lineHeight: 1.05,
+    fontFamily:
+      'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
+  },
   p: { margin: 0, color: "rgba(232,238,252,0.75)", maxWidth: 760 },
 
   card: {
@@ -526,8 +373,8 @@ const styles = {
     flexWrap: "wrap",
     alignItems: "flex-end",
   },
-  field: { flex: "1 1 340px", minWidth: 240 },
-  fieldSmall: { flex: "0 0 190px", minWidth: 160 },
+  field: { flex: "1 1 320px", minWidth: 240 },
+  fieldSmall: { flex: "0 0 180px", minWidth: 160 },
   label: {
     display: "block",
     fontSize: 12,
@@ -582,8 +429,6 @@ const styles = {
   helperTitle: { fontWeight: 900, marginBottom: 6 },
   helperText: { color: "rgba(232,238,252,0.78)" },
 
-  loadingBlock: { marginTop: 16 },
-
   resultHeader: {
     marginTop: 18,
     display: "flex",
@@ -594,17 +439,15 @@ const styles = {
     borderTop: "1px solid rgba(255,255,255,0.10)",
   },
   resultTitle: { fontWeight: 900, fontSize: 14 },
-  resultMeta: { marginTop: 6, color: "rgba(232,238,252,0.70)", fontSize: 12 },
+  resultMeta: { marginTop: 6, color: "rgba(232,238,252,0.75)", fontSize: 12 },
 
-  sourcePill: {
+  pillSmall: {
     padding: "6px 10px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(0,0,0,0.18)",
+    background: "rgba(255,255,255,0.06)",
     fontWeight: 900,
-    fontSize: 11,
-    letterSpacing: 0.8,
-    color: "rgba(232,238,252,0.9)",
+    fontSize: 12,
   },
   okBadge: {
     padding: "6px 10px",
@@ -617,7 +460,7 @@ const styles = {
 
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: 12,
     marginTop: 14,
   },
@@ -628,148 +471,111 @@ const styles = {
     padding: 14,
   },
   statTitle: { fontSize: 12, color: "rgba(232,238,252,0.72)" },
-  statValue: { fontSize: 24, fontWeight: 950, marginTop: 6 },
+  statValue: { fontSize: 26, fontWeight: 900, marginTop: 6 },
   statSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.65)" },
 
-  sectionTitle: { marginTop: 12, fontWeight: 950, fontSize: 13 },
+  sectionTitle: { marginTop: 10, fontWeight: 900, fontSize: 13 },
+  muted: { color: "rgba(232,238,252,0.6)" },
 
-  subCard: {
-    marginTop: 10,
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.16)",
-    padding: 14,
-  },
-
-  champBlock: { display: "flex", flexDirection: "column", gap: 12 },
-  champRow: { display: "flex", alignItems: "center", gap: 12 },
-  champIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.05)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    flex: "0 0 auto",
-  },
-  champIcon: { width: "100%", height: "100%", objectFit: "cover" },
-  champIconPlaceholder: {
-    width: "100%",
-    height: "100%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  champTitle: {
-    fontWeight: 950,
-    fontSize: 14,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  champMeta: { marginTop: 4, fontSize: 12, color: "rgba(232,238,252,0.70)" },
-  champBadge: {
-    marginLeft: "auto",
-    padding: "6px 10px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(0,0,0,0.18)",
-    fontWeight: 950,
-    fontSize: 11,
-    letterSpacing: 0.8,
-    color: "rgba(232,238,252,0.85)",
-  },
-  champBreakdown: {
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.03)",
-    padding: 12,
-  },
-  breakRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "6px 0",
-    borderBottom: "1px solid rgba(255,255,255,0.06)",
-  },
-  breakLabel: { fontSize: 12, color: "rgba(232,238,252,0.70)" },
-  breakValue: { fontWeight: 900, fontSize: 12 },
-  breakEmpty: { fontSize: 12, color: "rgba(232,238,252,0.70)" },
-
-  roleList: { display: "flex", flexDirection: "column", gap: 12 },
   roleRow: {
     display: "grid",
     gridTemplateColumns: "160px 1fr",
     gap: 12,
     alignItems: "center",
   },
-  roleLeft: { minWidth: 0 },
-  roleName: { fontWeight: 950, fontSize: 12, letterSpacing: 0.4 },
-  roleSmall: { marginTop: 4, fontSize: 12, color: "rgba(232,238,252,0.68)" },
-  roleBarTrack: {
-    width: "100%",
+  roleMeta: { display: "grid", gap: 4 },
+  roleName2: { fontWeight: 900, letterSpacing: 0.2 },
+  roleSmall: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
+
+  barTrack: {
     height: 12,
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.04)",
+    background: "rgba(0,0,0,0.22)",
     overflow: "hidden",
   },
-  roleBarFill: {
+  barFill: {
     height: "100%",
     borderRadius: 999,
-    width: "0%",
-    transition: "width 650ms cubic-bezier(0.2, 0.8, 0.2, 1)",
-    boxShadow: "0 10px 30px rgba(59,130,246,0.15)",
+    background:
+      "linear-gradient(90deg, rgba(124,58,237,0.95), rgba(59,130,246,0.9), rgba(34,211,238,0.9))",
+    boxShadow: "0 0 18px rgba(59,130,246,0.35)",
   },
 
-  muted: { color: "rgba(232,238,252,0.6)" },
-
-  details: {
-    marginTop: 18,
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.02)",
-    padding: 12,
-  },
-  summary: { cursor: "pointer", fontWeight: 900 },
-  pre: {
+  breakdownEmpty: {
     marginTop: 10,
-    padding: 12,
-    borderRadius: 12,
-    background: "rgba(0,0,0,0.35)",
-    overflowX: "auto",
-    fontSize: 12,
-    color: "rgba(232,238,252,0.92)",
-  },
-
-  disclaimerCard: {
-    marginTop: 14,
-    borderRadius: 18,
+    borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.03)",
-    padding: 18,
-    boxShadow: "0 20px 80px rgba(0,0,0,0.25)",
-    backdropFilter: "blur(10px)",
+    padding: 14,
+    color: "rgba(232,238,252,0.72)",
   },
-  disclaimerTitle: { fontWeight: 950, fontSize: 18, marginBottom: 8 },
-  disclaimerText: { color: "rgba(232,238,252,0.78)", fontSize: 13, maxWidth: 900 },
-  chips: {
+
+  breakdownCard: {
+    marginTop: 10,
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.03)",
+    padding: 14,
+  },
+  breakdownTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  breakdownLeft: { display: "flex", alignItems: "center", gap: 12 },
+  champIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background:
+      "linear-gradient(135deg, rgba(124,58,237,0.35), rgba(59,130,246,0.25))",
+    display: "grid",
+    placeItems: "center",
+    fontWeight: 900,
+  },
+  breakdownTitle: { fontWeight: 900 },
+  breakdownSub: { fontSize: 12, color: "rgba(232,238,252,0.65)", marginTop: 2 },
+  pill: {
+    padding: "6px 10px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(0,0,0,0.22)",
+    fontWeight: 900,
+    fontSize: 12,
+  },
+  breakdownGrid: {
     marginTop: 12,
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 12,
+  },
+  breakdownItem: {
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.18)",
+    padding: 12,
+  },
+  breakdownLabel: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
+  breakdownValue: { marginTop: 6, fontWeight: 900 },
+
+  disclaimerText: { marginTop: 8, color: "rgba(232,238,252,0.75)" },
+  chips: {
+    marginTop: 14,
     display: "flex",
     flexWrap: "wrap",
     gap: 10,
   },
   chip: {
-    padding: "8px 10px",
+    padding: "10px 12px",
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(0,0,0,0.20)",
-    color: "rgba(232,238,252,0.85)",
-    fontSize: 12,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.22)",
     fontWeight: 800,
+    fontSize: 12,
+    color: "rgba(232,238,252,0.85)",
   },
 
   footer: {
@@ -784,16 +590,6 @@ const styles = {
   },
   footerSmall: { opacity: 0.9 },
   footerLinks: { display: "flex", alignItems: "center", gap: 10 },
-  link: { color: "rgba(232,238,252,0.86)", textDecoration: "none", fontWeight: 800 },
+  link: { color: "rgba(232,238,252,0.80)", textDecoration: "none" },
   dot: { opacity: 0.6 },
-
-  skel: {
-    height: 12,
-    borderRadius: 999,
-    marginTop: 10,
-    background:
-      "linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.12), rgba(255,255,255,0.06))",
-    backgroundSize: "200% 100%",
-    animation: "shimmer 1.2s infinite",
-  },
 };
