@@ -1,15 +1,13 @@
 import { useMemo, useState } from "react";
 
 /* =========================
-   SUPABASE CONFIG (NET)
+   SUPABASE CONFIG
 ========================= */
-
 const SUPABASE_PROJECT_REF = "lpoxlbbcmpxbfpfrufvf";
 const SUPABASE_FN_URL = `https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/get-player-insights`;
 
-/* =========================
-   UI HELPERS
-========================= */
+// Raw JSON'u production'da gizle (Riot review için daha clean)
+const SHOW_RAW = process.env.NODE_ENV !== "production";
 
 const regions = [
   { value: "tr1", label: "TR (tr1)" },
@@ -43,14 +41,7 @@ export default function Demo() {
     const bestChamp = raw.insights.best_champion ?? null;
     const roles = raw.insights.role_distribution ?? [];
 
-    return {
-      sampleSize: s,
-      last10,
-      bestChamp,
-      roles,
-      puuid: raw.puuid,
-      ok: raw.ok,
-    };
+    return { sampleSize: s, last10, bestChamp, roles, puuid: raw.puuid, ok: raw.ok };
   }, [raw]);
 
   const run = async () => {
@@ -65,35 +56,27 @@ export default function Demo() {
 
     setLoading(true);
     try {
-      const url = `${SUPABASE_FN_URL}?name=${encodeURIComponent(
-        trimmed
-      )}&region=${encodeURIComponent(region)}`;
+      const url = `${SUPABASE_FN_URL}?name=${encodeURIComponent(trimmed)}&region=${encodeURIComponent(region)}`;
 
-      const res = await fetch(url, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
-      });
+      const res = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
 
-      // JSON parse güvenli
       let data = null;
       try {
         data = await res.json();
-      } catch (e) {
+      } catch {
         data = null;
       }
 
       if (!res.ok) {
         const msg =
           (data && (data.error || data.message)) ||
-          `Request failed (${res.status})`;
+          "Demo request failed. This demo runs on limited development API access. Please try again later.";
         throw new Error(msg);
       }
 
       setRaw(data);
     } catch (e) {
-      setError(e?.message || "Bir hata oluştu.");
+      setError(e?.message || "Demo request failed. Please try again later.");
     } finally {
       setLoading(false);
     }
@@ -110,8 +93,11 @@ export default function Demo() {
           <div style={styles.badge}>DEMO</div>
           <h1 style={styles.h1}>Nexio.gg Insights</h1>
           <p style={styles.p}>
-            AI-powered esports analytics. League of Legends için başlangıç — daha
-            fazlası yolda.
+            Post-match performance insights using publicly available game data.
+            <br />
+            <span style={styles.muted}>
+              This demo uses limited-rate development API access. Data may be partial or incomplete.
+            </span>
           </p>
         </header>
 
@@ -131,11 +117,7 @@ export default function Demo() {
 
             <div style={styles.fieldSmall}>
               <label style={styles.label}>Region</label>
-              <select
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-                style={styles.select}
-              >
+              <select value={region} onChange={(e) => setRegion(e.target.value)} style={styles.select}>
                 {regions.map((r) => (
                   <option key={r.value} value={r.value}>
                     {r.label}
@@ -155,14 +137,17 @@ export default function Demo() {
                   cursor: loading ? "not-allowed" : "pointer",
                 }}
               >
-                {loading ? "Running..." : "Run"}
+                {loading ? "Analyzing..." : "Run"}
               </button>
             </div>
           </div>
 
           {error ? (
             <div style={styles.alertError}>
-              <strong>Hata:</strong> {error}
+              <strong>Request failed:</strong>{" "}
+              <span style={{ opacity: 0.95 }}>
+                {error}
+              </span>
             </div>
           ) : null}
 
@@ -172,18 +157,14 @@ export default function Demo() {
                 <div>
                   <div style={styles.resultTitle}>Result</div>
                   <div style={styles.resultMeta}>
-                    PUUID: <span style={styles.mono}>{parsed.puuid}</span>
+                    Displayed data is based on recent available matches and may not represent full account history.
                   </div>
                 </div>
                 <div style={styles.okBadge}>{parsed.ok ? "OK" : "NOT OK"}</div>
               </div>
 
               <div style={styles.grid}>
-                <StatCard
-                  title="Sample size"
-                  value={parsed.sampleSize ?? "-"}
-                  sub="Analiz edilen match sayısı"
-                />
+                <StatCard title="Sample size" value={parsed.sampleSize ?? "-"} sub="Analyzed matches (recent)" />
 
                 <StatCard
                   title="Last 10 KDA"
@@ -191,7 +172,7 @@ export default function Demo() {
                   sub={
                     parsed.last10
                       ? `${parsed.last10.games} game • ${parsed.last10.winrate_pct}% WR`
-                      : "Veri yok"
+                      : "Not enough data yet"
                   }
                 />
 
@@ -201,7 +182,7 @@ export default function Demo() {
                   sub={
                     parsed.bestChamp
                       ? `Games: ${parsed.bestChamp.games} • Avg KDA: ${parsed.bestChamp.avg_kda}`
-                      : "Henüz yeterli veri yok"
+                      : "Not enough data yet"
                   }
                 />
               </div>
@@ -218,39 +199,50 @@ export default function Demo() {
                       </div>
                     ))
                   ) : (
-                    <div style={styles.muted}>Veri yok</div>
+                    <div style={styles.muted}>No role data</div>
                   )}
                 </div>
               </div>
 
-              <details style={styles.details}>
-                <summary style={styles.summary}>Raw JSON</summary>
-                <pre style={styles.pre}>{JSON.stringify(raw, null, 2)}</pre>
-              </details>
+              {SHOW_RAW ? (
+                <details style={styles.details}>
+                  <summary style={styles.summary}>Raw JSON (dev only)</summary>
+                  <pre style={styles.pre}>{JSON.stringify(raw, null, 2)}</pre>
+                </details>
+              ) : null}
             </>
           ) : (
             <div style={styles.helper}>
-              <div style={styles.helperTitle}>Hızlı test</div>
+              <div style={styles.helperTitle}>Quick test</div>
               <div style={styles.helperText}>
-                Summoner yaz → region seç → <strong>Run</strong>. Sonuçları kart
-                halinde göreceksin.
+                Summoner yaz → region seç → <strong>Run</strong>. Sonuçlar kartlar halinde gelir.
               </div>
             </div>
           )}
         </section>
 
-        <footer style={styles.footer}>
-          <div style={styles.footerSmall}>
-            Nexio.gg is not affiliated with Riot Games.
+        <section style={{ ...styles.card, marginTop: 14 }}>
+          <h2 style={styles.h2}>Disclaimer</h2>
+          <p style={{ ...styles.p, marginTop: 8 }}>
+            Nexio.gg is not affiliated with, endorsed, sponsored, or approved by Riot Games.
+          </p>
+          <div style={styles.boundaryWrap}>
+            <div style={styles.boundaryItem}>No real-time in-game assistance</div>
+            <div style={styles.boundaryItem}>No automation or scripting</div>
+            <div style={styles.boundaryItem}>No betting / gambling</div>
+            <div style={styles.boundaryItem}>No gameplay modification</div>
+            <div style={styles.boundaryItem}>No competitive advantage</div>
           </div>
+        </section>
+
+        <footer style={styles.footer}>
+          <div style={styles.footerSmall}>Nexio.gg is not affiliated with Riot Games.</div>
           <div style={styles.footerLinks}>
-            <a href="/terms" style={styles.link}>
-              Terms
-            </a>
+            <a href="/" style={styles.link}>Home</a>
             <span style={styles.dot}>•</span>
-            <a href="/privacy" style={styles.link}>
-              Privacy
-            </a>
+            <a href="/terms" style={styles.link}>Terms</a>
+            <span style={styles.dot}>•</span>
+            <a href="/privacy" style={styles.link}>Privacy</a>
           </div>
         </footer>
       </div>
@@ -264,12 +256,9 @@ const styles = {
     background:
       "radial-gradient(1200px 600px at 20% 10%, rgba(124,58,237,0.25), transparent 60%), radial-gradient(900px 500px at 80% 20%, rgba(59,130,246,0.18), transparent 55%), #0b1020",
     color: "#e8eefc",
+    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
   },
-  container: {
-    maxWidth: 980,
-    margin: "0 auto",
-    padding: "48px 20px 28px",
-  },
+  container: { maxWidth: 980, margin: "0 auto", padding: "56px 20px 28px" },
   header: { marginBottom: 18 },
   badge: {
     display: "inline-block",
@@ -280,8 +269,10 @@ const styles = {
     fontSize: 12,
     letterSpacing: 1,
   },
-  h1: { margin: "12px 0 8px", fontSize: 40, lineHeight: 1.1 },
-  p: { margin: 0, color: "rgba(232,238,252,0.75)", maxWidth: 700 },
+  h1: { margin: "12px 0 8px", fontSize: 40, lineHeight: 1.1, fontWeight: 900 },
+  h2: { margin: 0, fontSize: 16, fontWeight: 900 },
+  p: { margin: 0, color: "rgba(232,238,252,0.78)", maxWidth: 760, lineHeight: 1.6 },
+  muted: { color: "rgba(232,238,252,0.62)" },
 
   card: {
     marginTop: 18,
@@ -301,12 +292,7 @@ const styles = {
   },
   field: { flex: "1 1 320px", minWidth: 240 },
   fieldSmall: { flex: "0 0 180px", minWidth: 160 },
-  label: {
-    display: "block",
-    fontSize: 12,
-    color: "rgba(232,238,252,0.75)",
-    marginBottom: 6,
-  },
+  label: { display: "block", fontSize: 12, color: "rgba(232,238,252,0.75)", marginBottom: 6 },
   input: {
     width: "100%",
     padding: "10px 12px",
@@ -330,10 +316,9 @@ const styles = {
     padding: "10px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.18)",
-    background:
-      "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
+    background: "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
     color: "#fff",
-    fontWeight: 700,
+    fontWeight: 800,
   },
 
   alertError: {
@@ -352,7 +337,7 @@ const styles = {
     border: "1px dashed rgba(255,255,255,0.18)",
     background: "rgba(255,255,255,0.03)",
   },
-  helperTitle: { fontWeight: 800, marginBottom: 6 },
+  helperTitle: { fontWeight: 900, marginBottom: 6 },
   helperText: { color: "rgba(232,238,252,0.78)" },
 
   resultHeader: {
@@ -364,15 +349,14 @@ const styles = {
     paddingTop: 14,
     borderTop: "1px solid rgba(255,255,255,0.10)",
   },
-  resultTitle: { fontWeight: 800, fontSize: 14 },
-  resultMeta: { marginTop: 6, color: "rgba(232,238,252,0.75)", fontSize: 12 },
-  mono: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
+  resultTitle: { fontWeight: 900, fontSize: 14 },
+  resultMeta: { marginTop: 6, color: "rgba(232,238,252,0.72)", fontSize: 12, maxWidth: 640 },
   okBadge: {
     padding: "6px 10px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,0.25)",
-    fontWeight: 800,
+    fontWeight: 900,
     fontSize: 12,
   },
 
@@ -388,17 +372,12 @@ const styles = {
     background: "rgba(255,255,255,0.03)",
     padding: 14,
   },
-  statTitle: { fontSize: 12, color: "rgba(232,238,252,0.72)" },
-  statValue: { fontSize: 22, fontWeight: 900, marginTop: 6 },
+  statTitle: { fontSize: 12, color: "rgba(232,238,252,0.72)", fontWeight: 800 },
+  statValue: { fontSize: 22, fontWeight: 950, marginTop: 6 },
   statSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.65)" },
 
-  sectionTitle: { marginTop: 10, fontWeight: 900, fontSize: 13 },
-  rolesWrap: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 10,
-    marginTop: 10,
-  },
+  sectionTitle: { marginTop: 10, fontWeight: 950, fontSize: 13 },
+  rolesWrap: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 },
   rolePill: {
     display: "flex",
     alignItems: "center",
@@ -408,7 +387,7 @@ const styles = {
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(0,0,0,0.22)",
   },
-  roleName: { fontWeight: 900 },
+  roleName: { fontWeight: 950 },
   rolePct: { color: "rgba(232,238,252,0.75)", fontSize: 12 },
   roleCount: {
     marginLeft: 6,
@@ -418,7 +397,6 @@ const styles = {
     background: "rgba(255,255,255,0.08)",
     border: "1px solid rgba(255,255,255,0.10)",
   },
-  muted: { color: "rgba(232,238,252,0.6)" },
 
   details: {
     marginTop: 18,
@@ -427,7 +405,7 @@ const styles = {
     background: "rgba(255,255,255,0.02)",
     padding: 12,
   },
-  summary: { cursor: "pointer", fontWeight: 800 },
+  summary: { cursor: "pointer", fontWeight: 900 },
   pre: {
     marginTop: 10,
     padding: 12,
@@ -438,8 +416,19 @@ const styles = {
     color: "rgba(232,238,252,0.92)",
   },
 
+  boundaryWrap: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 },
+  boundaryItem: {
+    padding: "10px 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.22)",
+    fontSize: 12,
+    color: "rgba(232,238,252,0.85)",
+    fontWeight: 800,
+  },
+
   footer: {
-    marginTop: 16,
+    marginTop: 18,
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -450,6 +439,6 @@ const styles = {
   },
   footerSmall: { opacity: 0.9 },
   footerLinks: { display: "flex", alignItems: "center", gap: 10 },
-  link: { color: "rgba(232,238,252,0.80)", textDecoration: "none" },
+  link: { color: "rgba(232,238,252,0.85)", textDecoration: "none", fontWeight: 800 },
   dot: { opacity: 0.6 },
 };
