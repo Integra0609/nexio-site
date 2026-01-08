@@ -10,10 +10,22 @@ const regions = [
   { value: "kr", label: "KR (kr)" },
 ];
 
+const quickExamples = [
+  { name: "faker", region: "kr" },
+  { name: "Hide on bush", region: "kr" },
+  { name: "solbekberkay", region: "tr1" },
+];
+
 function clampPct(n) {
   const x = Number(n);
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(100, x));
+}
+
+function fmtNum(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "-";
+  return String(x);
 }
 
 function StatCard({ title, value, sub }) {
@@ -46,7 +58,7 @@ function RoleBars({ roles = [] }) {
           <div style={styles.roleLeft}>
             <div style={styles.roleName}>{r.role}</div>
             <div style={styles.roleSmall}>
-              {r.count} match • {r.pct}%
+              {fmtNum(r.count)} match • {fmtNum(r.pct)}%
             </div>
           </div>
 
@@ -59,11 +71,11 @@ function RoleBars({ roles = [] }) {
   );
 }
 
-function BestChampionBreakdown({ bestChamp }) {
+function BestChampionCard({ bestChamp }) {
   if (!bestChamp) {
     return (
-      <div style={styles.breakEmpty}>
-        Not enough data yet to determine a best champion.
+      <div style={styles.emptyCard}>
+        Not enough data yet to determine a best champion from the recent sample.
       </div>
     );
   }
@@ -73,26 +85,26 @@ function BestChampionBreakdown({ bestChamp }) {
   const avgKda = bestChamp?.avg_kda ?? "-";
 
   return (
-    <div style={styles.breakCard}>
-      <div style={styles.breakTop}>
-        <div style={styles.breakLeft}>
+    <div style={styles.champCard}>
+      <div style={styles.champTop}>
+        <div style={styles.champLeft}>
           <div style={styles.champIcon}>{String(name).slice(0, 1)}</div>
           <div>
-            <div style={styles.breakTitle}>{name}</div>
-            <div style={styles.breakSub}>Best champion (recent sample)</div>
+            <div style={styles.champName}>{name}</div>
+            <div style={styles.champSub}>Best champion (recent sample)</div>
           </div>
         </div>
-        <div style={styles.pill}>READY</div>
+        <div style={styles.pill}>BETA</div>
       </div>
 
-      <div style={styles.breakGrid}>
-        <div style={styles.breakItem}>
-          <div style={styles.breakLabel}>Games</div>
-          <div style={styles.breakValue}>{games}</div>
+      <div style={styles.champGrid}>
+        <div style={styles.champItem}>
+          <div style={styles.champLabel}>Games</div>
+          <div style={styles.champValue}>{games}</div>
         </div>
-        <div style={styles.breakItem}>
-          <div style={styles.breakLabel}>Avg KDA</div>
-          <div style={styles.breakValue}>{avgKda}</div>
+        <div style={styles.champItem}>
+          <div style={styles.champLabel}>Avg KDA</div>
+          <div style={styles.champValue}>{avgKda}</div>
         </div>
       </div>
     </div>
@@ -116,7 +128,7 @@ export default function Demo() {
 
     return {
       ok: !!raw.ok,
-      source: raw.source || "demo",
+      source: raw.source || "beta",
       sampleSize: s,
       last10,
       bestChamp,
@@ -125,12 +137,14 @@ export default function Demo() {
     };
   }, [raw]);
 
-  const run = async () => {
+  const run = async (override) => {
     setError(null);
     setRaw(null);
 
-    const trimmed = name.trim();
-    if (!trimmed) {
+    const finalName = (override?.name ?? name).trim();
+    const finalRegion = override?.region ?? region;
+
+    if (!finalName) {
       setError("Please enter a summoner name.");
       return;
     }
@@ -138,8 +152,8 @@ export default function Demo() {
     setLoading(true);
     try {
       const url = `${SUPABASE_FN_URL}?name=${encodeURIComponent(
-        trimmed
-      )}&region=${encodeURIComponent(region)}`;
+        finalName
+      )}&region=${encodeURIComponent(finalRegion)}`;
 
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 12000);
@@ -174,20 +188,58 @@ export default function Demo() {
     if (e.key === "Enter") run();
   };
 
+  const setExample = (ex) => {
+    setName(ex.name);
+    setRegion(ex.region);
+    run(ex);
+  };
+
+  const clear = () => {
+    setName("");
+    setRegion("tr1");
+    setError(null);
+    setRaw(null);
+  };
+
   return (
     <main style={styles.page}>
       <div style={styles.container}>
-        <header style={styles.header}>
-          <div style={styles.badge}>DEMO</div>
-          <h1 style={styles.h1}>Nexio.gg Insights</h1>
-          <p style={styles.p}>
-            Post-match performance insights based on recently available public match data.
-          </p>
-          <p style={{ ...styles.p, marginTop: 6 }}>
-            This demo uses limited-rate development API access. Results may be partial and are shown for demonstration purposes only.
-          </p>
+        {/* MINI HERO */}
+        <header style={styles.hero}>
+          <div style={styles.heroLeft}>
+            <div style={styles.badge}>ANALYZER</div>
+            <h1 style={styles.h1}>
+              Insights <span style={styles.grad}>(Beta)</span>
+            </h1>
+            <p style={styles.p}>
+              Search a summoner to generate post-match insights from a recent sample:
+              KDA trend, best champion signals, and role distribution.
+            </p>
+
+            <div style={styles.heroChips}>
+              <span style={styles.chip}>Post-match only</span>
+              <span style={styles.chip}>No real-time assistance</span>
+              <span style={styles.chip}>No automation</span>
+              <span style={styles.chip}>No gameplay modification</span>
+            </div>
+          </div>
+
+          {/* BETA MODE BANNER */}
+          <div style={styles.betaBanner}>
+            <div style={styles.betaTitle}>Beta mode</div>
+            <div style={styles.betaText}>
+              Access may be limited while Riot review is pending. Results can be partial and
+              rate-limited.
+            </div>
+            <div style={styles.betaRow}>
+              <span style={styles.betaPill}>Limited-rate</span>
+              <span style={styles.betaPill}>Partial sample</span>
+              <span style={styles.betaPill}>Graceful errors</span>
+            </div>
+          </div>
         </header>
 
+        {/* SEARCH CARD */}
         <section style={styles.card}>
           <div style={styles.formRow}>
             <div style={styles.field}>
@@ -220,7 +272,7 @@ export default function Demo() {
             <div style={styles.fieldSmall}>
               <label style={styles.label}>&nbsp;</label>
               <button
-                onClick={run}
+                onClick={() => run()}
                 disabled={loading}
                 style={{
                   ...styles.button,
@@ -231,11 +283,29 @@ export default function Demo() {
                 {loading ? "Analyzing..." : "Run"}
               </button>
             </div>
+
+            <div style={styles.fieldTiny}>
+              <label style={styles.label}>&nbsp;</label>
+              <button
+                onClick={clear}
+                disabled={loading}
+                style={{
+                  ...styles.ghostBtn,
+                  opacity: loading ? 0.6 : 1,
+                  cursor: loading ? "not-allowed" : "pointer",
+                }}
+              >
+                Reset
+              </button>
+            </div>
           </div>
 
           {error ? (
             <div style={styles.alertError}>
               <strong>Request failed:</strong> {error}
+              <div style={{ marginTop: 8, color: "rgba(255,215,215,0.9)" }}>
+                Tip: Try another region or wait a bit if rate-limited.
+              </div>
             </div>
           ) : null}
 
@@ -245,7 +315,7 @@ export default function Demo() {
                 <div>
                   <div style={styles.resultTitle}>Result</div>
                   <div style={styles.resultMeta}>
-                    Insights are derived from a limited recent match sample and may not represent full account history.
+                    Limited recent sample — may not represent full history.
                   </div>
                 </div>
 
@@ -273,36 +343,67 @@ export default function Demo() {
                 />
 
                 <StatCard
-                  title="Best champion"
-                  value={parsed.bestChamp?.champion_name || "-"}
-                  sub={parsed.bestChamp ? "Based on recent sample" : "Not enough data yet"}
+                  title="PUUID"
+                  value={parsed.puuid ? "Available" : "-"}
+                  sub={parsed.puuid ? "Player identifier resolved" : "Not provided"}
                 />
               </div>
 
-              <div style={{ marginTop: 18 }}>
-                <div style={styles.sectionTitle}>Best champion breakdown</div>
-                <div style={styles.subCard}>
-                  <BestChampionBreakdown bestChamp={parsed.bestChamp} />
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Best champion</div>
+                <div style={styles.sectionCard}>
+                  <BestChampionCard bestChamp={parsed.bestChamp} />
                 </div>
               </div>
 
-              <div style={{ marginTop: 18 }}>
+              <div style={styles.section}>
                 <div style={styles.sectionTitle}>Role distribution</div>
-                <div style={styles.subCard}>
+                <div style={styles.sectionCard}>
                   <RoleBars roles={parsed.roles} />
+                </div>
+              </div>
+
+              <div style={styles.bottomCta}>
+                <div style={styles.bottomCtaText}>
+                  Want to understand how insights are computed?
+                </div>
+                <div style={styles.bottomCtaLinks}>
+                  <a href="/how-it-works" style={styles.linkBtn}>
+                    How it works
+                  </a>
+                  <a href="/about" style={styles.linkBtnGhost}>
+                    About Nexio
+                  </a>
                 </div>
               </div>
             </>
           ) : (
-            <div style={styles.helper}>
-              <div style={styles.helperTitle}>Quick test</div>
-              <div style={styles.helperText}>
-                Enter a summoner → pick a region → <strong>Run</strong>.
+            <div style={styles.emptyState}>
+              <div style={styles.emptyTitle}>Quick start</div>
+              <div style={styles.emptyText}>
+                Try one of these examples (1 click), or search your own summoner.
+              </div>
+
+              <div style={styles.exampleRow}>
+                {quickExamples.map((ex) => (
+                  <button
+                    key={ex.name + ex.region}
+                    onClick={() => setExample(ex)}
+                    style={styles.exampleBtn}
+                  >
+                    {ex.name} <span style={styles.exampleSub}>{ex.region}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div style={styles.emptyHint}>
+                If results look limited, it’s normal during beta access — try again later.
               </div>
             </div>
           )}
         </section>
 
+        {/* DISCLAIMER */}
         <section style={styles.disclaimerCard}>
           <div style={styles.disclaimerTitle}>Disclaimer</div>
           <div style={styles.disclaimerText}>
@@ -311,25 +412,12 @@ export default function Demo() {
             or competitive advantage.
           </div>
 
-          <div style={styles.chips}>
-            <div style={styles.chip}>Post-match only</div>
-            <div style={styles.chip}>No real-time assistance</div>
-            <div style={styles.chip}>No automation</div>
-            <div style={styles.chip}>No gameplay modification</div>
-            <div style={styles.chip}>No competitive advantage</div>
+          <div style={styles.chipsRow}>
+            <div style={styles.chipSoft}>No in-game advantage</div>
+            <div style={styles.chipSoft}>Post-match analytics</div>
+            <div style={styles.chipSoft}>No betting / gambling</div>
           </div>
         </section>
-
-        <footer style={styles.footer}>
-          <div style={styles.footerSmall}>© {new Date().getFullYear()} Nexio.gg</div>
-          <div style={styles.footerLinks}>
-            <a href="/" style={styles.link}>Home</a>
-            <span style={styles.dot}>•</span>
-            <a href="/terms" style={styles.link}>Terms</a>
-            <span style={styles.dot}>•</span>
-            <a href="/privacy" style={styles.link}>Privacy</a>
-          </div>
-        </footer>
       </div>
     </main>
   );
@@ -342,13 +430,23 @@ const styles = {
       "radial-gradient(1200px 600px at 20% 10%, rgba(124,58,237,0.25), transparent 60%), radial-gradient(900px 500px at 80% 20%, rgba(59,130,246,0.18), transparent 55%), #0b1020",
     color: "#e8eefc",
   },
-  container: {
-    maxWidth: 1040,
-    margin: "0 auto",
-    padding: "44px 20px 28px",
-  },
+  container: { maxWidth: 1040, margin: "0 auto", padding: "44px 20px 28px" },
 
-  header: { marginBottom: 18 },
+  hero: {
+    display: "grid",
+    gridTemplateColumns: "1.35fr 1fr",
+    gap: 14,
+    alignItems: "stretch",
+    marginBottom: 18,
+  },
+  heroLeft: {
+    borderRadius: 18,
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.10)",
+    padding: 18,
+    boxShadow: "0 18px 70px rgba(0,0,0,0.35)",
+    backdropFilter: "blur(10px)",
+  },
   badge: {
     display: "inline-block",
     padding: "6px 10px",
@@ -359,10 +457,48 @@ const styles = {
     letterSpacing: 1,
   },
   h1: { margin: "12px 0 8px", fontSize: 40, lineHeight: 1.1 },
-  p: { margin: 0, color: "rgba(232,238,252,0.75)", maxWidth: 820 },
+  grad: {
+    background: "linear-gradient(135deg, #7C3AED, #3B82F6)",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+    fontWeight: 950,
+  },
+  p: { margin: 0, color: "rgba(232,238,252,0.75)", maxWidth: 720, lineHeight: 1.6 },
+
+  heroChips: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14 },
+  chip: {
+    padding: "8px 10px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.22)",
+    fontSize: 12,
+    color: "rgba(232,238,252,0.78)",
+    fontWeight: 850,
+  },
+
+  betaBanner: {
+    borderRadius: 18,
+    border: "1px solid rgba(124,58,237,0.28)",
+    background:
+      "linear-gradient(180deg, rgba(124,58,237,0.12), rgba(59,130,246,0.08))",
+    padding: 18,
+    boxShadow: "0 18px 70px rgba(0,0,0,0.25)",
+    backdropFilter: "blur(10px)",
+  },
+  betaTitle: { fontWeight: 950, fontSize: 14, marginBottom: 6 },
+  betaText: { fontSize: 12, color: "rgba(232,238,252,0.75)", lineHeight: 1.5 },
+  betaRow: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 },
+  betaPill: {
+    padding: "8px 10px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(0,0,0,0.18)",
+    fontSize: 12,
+    fontWeight: 900,
+    color: "rgba(232,238,252,0.85)",
+  },
 
   card: {
-    marginTop: 18,
     background: "rgba(255,255,255,0.04)",
     border: "1px solid rgba(255,255,255,0.10)",
     borderRadius: 18,
@@ -371,20 +507,13 @@ const styles = {
     backdropFilter: "blur(10px)",
   },
 
-  formRow: {
-    display: "flex",
-    gap: 12,
-    flexWrap: "wrap",
-    alignItems: "flex-end",
-  },
+  formRow: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" },
   field: { flex: "1 1 340px", minWidth: 240 },
   fieldSmall: { flex: "0 0 190px", minWidth: 160 },
-  label: {
-    display: "block",
-    fontSize: 12,
-    color: "rgba(232,238,252,0.75)",
-    marginBottom: 6,
-  },
+  fieldTiny: { flex: "0 0 120px", minWidth: 120 },
+
+  label: { display: "block", fontSize: 12, color: "rgba(232,238,252,0.75)", marginBottom: 6 },
+
   input: {
     width: "100%",
     padding: "10px 12px",
@@ -408,9 +537,17 @@ const styles = {
     padding: "10px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.18)",
-    background:
-      "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
+    background: "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
     color: "#fff",
+    fontWeight: 900,
+  },
+  ghostBtn: {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(0,0,0,0.22)",
+    color: "rgba(232,238,252,0.9)",
     fontWeight: 900,
   },
 
@@ -423,15 +560,28 @@ const styles = {
     color: "#ffd7d7",
   },
 
-  helper: {
+  emptyState: {
     marginTop: 16,
     padding: "14px 14px",
     borderRadius: 14,
     border: "1px dashed rgba(255,255,255,0.18)",
     background: "rgba(255,255,255,0.03)",
   },
-  helperTitle: { fontWeight: 900, marginBottom: 6 },
-  helperText: { color: "rgba(232,238,252,0.78)" },
+  emptyTitle: { fontWeight: 950, marginBottom: 6 },
+  emptyText: { color: "rgba(232,238,252,0.78)", marginBottom: 10 },
+
+  exampleRow: { display: "flex", gap: 10, flexWrap: "wrap" },
+  exampleBtn: {
+    padding: "10px 12px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(0,0,0,0.22)",
+    color: "#E8EEFC",
+    fontWeight: 950,
+    cursor: "pointer",
+  },
+  exampleSub: { opacity: 0.7, fontWeight: 800 },
+  emptyHint: { marginTop: 10, fontSize: 12, color: "rgba(232,238,252,0.60)" },
 
   resultHeader: {
     marginTop: 18,
@@ -442,7 +592,7 @@ const styles = {
     paddingTop: 14,
     borderTop: "1px solid rgba(255,255,255,0.10)",
   },
-  resultTitle: { fontWeight: 900, fontSize: 14 },
+  resultTitle: { fontWeight: 950, fontSize: 14 },
   resultMeta: { marginTop: 6, color: "rgba(232,238,252,0.70)", fontSize: 12 },
 
   sourcePill: {
@@ -450,7 +600,7 @@ const styles = {
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,0.18)",
-    fontWeight: 900,
+    fontWeight: 950,
     fontSize: 11,
     letterSpacing: 0.8,
     color: "rgba(232,238,252,0.9)",
@@ -460,7 +610,7 @@ const styles = {
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,0.25)",
-    fontWeight: 900,
+    fontWeight: 950,
     fontSize: 12,
   },
 
@@ -480,38 +630,37 @@ const styles = {
   statValue: { fontSize: 24, fontWeight: 950, marginTop: 6 },
   statSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.65)" },
 
-  sectionTitle: { marginTop: 12, fontWeight: 950, fontSize: 13 },
-
-  subCard: {
-    marginTop: 10,
+  section: { marginTop: 18 },
+  sectionTitle: { fontWeight: 950, fontSize: 13, marginBottom: 10 },
+  sectionCard: {
     borderRadius: 16,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(0,0,0,0.16)",
     padding: 14,
   },
 
-  breakEmpty: { fontSize: 12, color: "rgba(232,238,252,0.72)" },
-  breakCard: {
+  emptyCard: { fontSize: 12, color: "rgba(232,238,252,0.72)" },
+
+  champCard: {
     borderRadius: 16,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.03)",
     padding: 14,
   },
-  breakTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  breakLeft: { display: "flex", alignItems: "center", gap: 12 },
+  champTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  champLeft: { display: "flex", alignItems: "center", gap: 12 },
   champIcon: {
     width: 40,
     height: 40,
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.12)",
-    background:
-      "linear-gradient(135deg, rgba(124,58,237,0.35), rgba(59,130,246,0.25))",
+    background: "linear-gradient(135deg, rgba(124,58,237,0.35), rgba(59,130,246,0.25))",
     display: "grid",
     placeItems: "center",
     fontWeight: 950,
   },
-  breakTitle: { fontWeight: 950 },
-  breakSub: { fontSize: 12, color: "rgba(232,238,252,0.68)", marginTop: 2 },
+  champName: { fontWeight: 950 },
+  champSub: { fontSize: 12, color: "rgba(232,238,252,0.68)", marginTop: 2 },
   pill: {
     padding: "6px 10px",
     borderRadius: 999,
@@ -520,15 +669,15 @@ const styles = {
     fontWeight: 950,
     fontSize: 12,
   },
-  breakGrid: { marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
-  breakItem: {
+  champGrid: { marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
+  champItem: {
     borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(0,0,0,0.18)",
     padding: 12,
   },
-  breakLabel: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
-  breakValue: { marginTop: 6, fontWeight: 950 },
+  champLabel: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
+  champValue: { marginTop: 6, fontWeight: 950 },
 
   roleList: { display: "flex", flexDirection: "column", gap: 12 },
   roleRow: { display: "grid", gridTemplateColumns: "160px 1fr", gap: 12, alignItems: "center" },
@@ -554,6 +703,37 @@ const styles = {
 
   muted: { color: "rgba(232,238,252,0.6)" },
 
+  bottomCta: {
+    marginTop: 18,
+    borderTop: "1px solid rgba(255,255,255,0.10)",
+    paddingTop: 14,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  bottomCtaText: { color: "rgba(232,238,252,0.78)", fontWeight: 900 },
+  bottomCtaLinks: { display: "flex", gap: 10, flexWrap: "wrap" },
+  linkBtn: {
+    padding: "10px 12px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "linear-gradient(135deg, rgba(124,58,237,0.90), rgba(59,130,246,0.85))",
+    color: "#fff",
+    textDecoration: "none",
+    fontWeight: 900,
+  },
+  linkBtnGhost: {
+    padding: "10px 12px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(0,0,0,0.22)",
+    color: "rgba(232,238,252,0.9)",
+    textDecoration: "none",
+    fontWeight: 900,
+  },
+
   disclaimerCard: {
     marginTop: 14,
     borderRadius: 18,
@@ -565,29 +745,15 @@ const styles = {
   },
   disclaimerTitle: { fontWeight: 950, fontSize: 18, marginBottom: 8 },
   disclaimerText: { color: "rgba(232,238,252,0.78)", fontSize: 13, maxWidth: 900 },
-  chips: { marginTop: 12, display: "flex", flexWrap: "wrap", gap: 10 },
-  chip: {
+
+  chipsRow: { marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" },
+  chipSoft: {
     padding: "8px 10px",
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(0,0,0,0.20)",
-    color: "rgba(232,238,252,0.85)",
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.05)",
     fontSize: 12,
+    color: "rgba(232,238,252,0.72)",
     fontWeight: 900,
   },
-
-  footer: {
-    marginTop: 16,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-    color: "rgba(232,238,252,0.65)",
-    fontSize: 12,
-  },
-  footerSmall: { opacity: 0.9 },
-  footerLinks: { display: "flex", alignItems: "center", gap: 10 },
-  link: { color: "rgba(232,238,252,0.86)", textDecoration: "none", fontWeight: 800 },
-  dot: { opacity: 0.6 },
 };
