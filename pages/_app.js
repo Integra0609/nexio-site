@@ -58,7 +58,7 @@ export default function App({ Component, pageProps, router }) {
             <nav style={styles.nav}>
               {[
                 { href: "/", label: "Home" },
-                { href: "/demo", label: "Demo" },
+                { href: "/analyzer", label: "Analyzer" }
                 { href: "/how-it-works", label: "How it works" },
                 { href: "/about", label: "About" },
               ].map((item) => (
