@@ -1,5 +1,0 @@
-{
-  "routes": [
-    { "src": "/riot.txt", "dest": "/riot.txt" }
-  ]
-}
