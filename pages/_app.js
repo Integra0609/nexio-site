@@ -1,15 +1,33 @@
 // pages/_app.js
+import Head from "next/head";
+
 export default function App({ Component, pageProps, router }) {
   const isActive = (href) => router?.pathname === href;
 
   return (
     <>
+      <Head>
+        <title>Nexio.gg</title>
+        <meta name="description" content="AI-powered post-match esports analytics." />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+        {/* Favicons */}
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/favicon.svg" />
+      </Head>
+
       <div style={styles.shell}>
         {/* GLOBAL HEADER */}
         <header style={styles.header}>
           <div style={styles.headerInner}>
             <a href="/" style={styles.brand}>
-              <div style={styles.logoMark}>N</div>
+              <img
+                src="/nexio-mark.svg"
+                alt="Nexio.gg"
+                width={40}
+                height={40}
+                style={styles.logoImg}
+              />
               <div style={{ display: "grid", gap: 2 }}>
                 <div style={styles.brandName}>Nexio.gg</div>
                 <div style={styles.brandSub}>AI-powered esports analytics</div>
@@ -56,18 +74,13 @@ export default function App({ Component, pageProps, router }) {
         {/* GLOBAL FOOTER */}
         <footer style={styles.footer}>
           <div style={styles.footerInner}>
-            <div style={styles.footerLeft}>
-              © {new Date().getFullYear()} Nexio.gg
-            </div>
-
+            <div style={styles.footerLeft}>© {new Date().getFullYear()} Nexio.gg</div>
             <div style={styles.footerRight}>
               <a href="/terms" style={styles.footerLink}>Terms</a>
               <span style={styles.dot}>•</span>
               <a href="/privacy" style={styles.footerLink}>Privacy</a>
               <span style={styles.dot}>•</span>
-              <span style={styles.footerMuted}>
-                Not affiliated with Riot Games
-              </span>
+              <span style={styles.footerMuted}>Not affiliated with Riot Games</span>
             </div>
           </div>
         </footer>
@@ -77,9 +90,7 @@ export default function App({ Component, pageProps, router }) {
 }
 
 const styles = {
-  shell: {
-    minHeight: "100vh",
-  },
+  shell: { minHeight: "100vh" },
 
   header: {
     position: "sticky",
@@ -106,22 +117,14 @@ const styles = {
     textDecoration: "none",
     color: "#e8eefc",
   },
-  logoMark: {
-    width: 40,
-    height: 40,
+  logoImg: {
     borderRadius: 12,
-    display: "grid",
-    placeItems: "center",
-    fontWeight: 950,
-    background: "rgba(255,255,255,0.07)",
     border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.06)",
     boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
   },
   brandName: { fontWeight: 950, letterSpacing: 0.2 },
-  brandSub: {
-    fontSize: 12,
-    color: "rgba(232,238,252,0.7)",
-  },
+  brandSub: { fontSize: 12, color: "rgba(232,238,252,0.7)" },
 
   nav: {
     display: "flex",
@@ -146,11 +149,7 @@ const styles = {
     border: "1px solid rgba(255,255,255,0.10)",
   },
 
-  content: {
-    // Sayfaların kendi background'u varsa bozmuyoruz.
-    // Ama body boş kalmasın diye min bir padding bırakıyoruz:
-    minHeight: "calc(100vh - 140px)",
-  },
+  content: { minHeight: "calc(100vh - 140px)" },
 
   footer: {
     borderTop: "1px solid rgba(255,255,255,0.08)",
@@ -170,17 +169,8 @@ const styles = {
     fontSize: 12,
   },
   footerLeft: { opacity: 0.9 },
-  footerRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-  footerLink: {
-    color: "rgba(232,238,252,0.78)",
-    textDecoration: "none",
-    fontWeight: 800,
-  },
+  footerRight: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
+  footerLink: { color: "rgba(232,238,252,0.78)", textDecoration: "none", fontWeight: 800 },
   footerMuted: { color: "rgba(232,238,252,0.55)" },
   dot: { opacity: 0.6 },
 };
