@@ -10,20 +10,8 @@ export default function App({ Component, pageProps, router }) {
     const active = isActive(href);
     const hover = hovered === href;
 
-    if (active) {
-      return {
-        ...styles.navLink,
-        ...styles.navActive,
-      };
-    }
-
-    if (hover) {
-      return {
-        ...styles.navLink,
-        ...styles.navHover,
-      };
-    }
-
+    if (active) return { ...styles.navLink, ...styles.navActive };
+    if (hover) return { ...styles.navLink, ...styles.navHover };
     return styles.navLink;
   };
 
@@ -31,7 +19,10 @@ export default function App({ Component, pageProps, router }) {
     <>
       <Head>
         <title>Nexio.gg</title>
-        <meta name="description" content="AI-powered post-match esports analytics." />
+        <meta
+          name="description"
+          content="AI-powered post-match esports analytics."
+        />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/favicon.svg" />
@@ -58,7 +49,7 @@ export default function App({ Component, pageProps, router }) {
             <nav style={styles.nav}>
               {[
                 { href: "/", label: "Home" },
-                { href: "/analyzer", label: "Analyzer" }
+                { href: "/analyzer", label: "Analyzer" }, // ✅ changed from /demo
                 { href: "/how-it-works", label: "How it works" },
                 { href: "/about", label: "About" },
               ].map((item) => (
@@ -84,13 +75,22 @@ export default function App({ Component, pageProps, router }) {
         {/* FOOTER */}
         <footer style={styles.footer}>
           <div style={styles.footerInner}>
-            <div>© {new Date().getFullYear()} Nexio.gg</div>
+            <div style={styles.footerLeft}>
+              © {new Date().getFullYear()} Nexio.gg
+            </div>
+
             <div style={styles.footerRight}>
-              <a href="/terms" style={styles.footerLink}>Terms</a>
+              <a href="/terms" style={styles.footerLink}>
+                Terms
+              </a>
               <span style={styles.dot}>•</span>
-              <a href="/privacy" style={styles.footerLink}>Privacy</a>
+              <a href="/privacy" style={styles.footerLink}>
+                Privacy
+              </a>
               <span style={styles.dot}>•</span>
-              <span style={styles.footerMuted}>Not affiliated with Riot Games</span>
+              <span style={styles.footerMuted}>
+                Not affiliated with Riot Games
+              </span>
             </div>
           </div>
         </footer>
@@ -118,7 +118,7 @@ const styles = {
     justifyContent: "space-between",
     alignItems: "center",
     gap: 14,
-    flexWrap: "wrap", // mobile wrap
+    flexWrap: "wrap",
   },
 
   brand: {
@@ -134,8 +134,8 @@ const styles = {
     background: "rgba(255,255,255,0.06)",
     boxShadow: "0 12px 34px rgba(0,0,0,0.45)",
   },
-  brandName: { fontWeight: 950 },
-  brandSub: { fontSize: 12, color: "rgba(232,238,252,0.7)" },
+  brandName: { fontWeight: 950, letterSpacing: 0.2 },
+  brandSub: { fontSize: 12, color: "rgba(232,238,252,0.70)" },
 
   nav: {
     display: "flex",
@@ -151,18 +151,22 @@ const styles = {
     fontWeight: 850,
     textDecoration: "none",
     color: "rgba(232,238,252,0.78)",
-    transition: "all 180ms ease",
+    border: "1px solid rgba(255,255,255,0.00)",
+    background: "rgba(255,255,255,0.00)",
+    transition:
+      "background 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease",
   },
 
   navHover: {
     background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.10)",
     color: "#E8EEFC",
   },
 
   navActive: {
+    color: "#E8EEFC",
     background: "rgba(124,58,237,0.16)",
     border: "1px solid rgba(124,58,237,0.35)",
-    color: "#E8EEFC",
     boxShadow: "0 10px 28px rgba(124,58,237,0.12)",
   },
 
@@ -184,6 +188,7 @@ const styles = {
     fontSize: 12,
     color: "rgba(232,238,252,0.65)",
   },
+  footerLeft: { opacity: 0.95, color: "rgba(232,238,252,0.70)" },
   footerRight: { display: "flex", gap: 10, flexWrap: "wrap" },
   footerLink: {
     color: "rgba(232,238,252,0.82)",
