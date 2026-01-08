@@ -37,13 +37,19 @@ export default function App({ Component, pageProps, router }) {
             <nav style={styles.nav}>
               <a
                 href="/"
-                style={{ ...styles.navLink, ...(isActive("/") ? styles.navActive : null) }}
+                style={{
+                  ...styles.navLink,
+                  ...(isActive("/") ? styles.navActive : null),
+                }}
               >
                 Home
               </a>
               <a
                 href="/demo"
-                style={{ ...styles.navLink, ...(isActive("/demo") ? styles.navActive : null) }}
+                style={{
+                  ...styles.navLink,
+                  ...(isActive("/demo") ? styles.navActive : null),
+                }}
               >
                 Demo
               </a>
@@ -58,7 +64,10 @@ export default function App({ Component, pageProps, router }) {
               </a>
               <a
                 href="/about"
-                style={{ ...styles.navLink, ...(isActive("/about") ? styles.navActive : null) }}
+                style={{
+                  ...styles.navLink,
+                  ...(isActive("/about") ? styles.navActive : null),
+                }}
               >
                 About
               </a>
@@ -75,10 +84,15 @@ export default function App({ Component, pageProps, router }) {
         <footer style={styles.footer}>
           <div style={styles.footerInner}>
             <div style={styles.footerLeft}>© {new Date().getFullYear()} Nexio.gg</div>
+
             <div style={styles.footerRight}>
-              <a href="/terms" style={styles.footerLink}>Terms</a>
+              <a href="/terms" style={styles.footerLink}>
+                Terms
+              </a>
               <span style={styles.dot}>•</span>
-              <a href="/privacy" style={styles.footerLink}>Privacy</a>
+              <a href="/privacy" style={styles.footerLink}>
+                Privacy
+              </a>
               <span style={styles.dot}>•</span>
               <span style={styles.footerMuted}>Not affiliated with Riot Games</span>
             </div>
@@ -90,15 +104,16 @@ export default function App({ Component, pageProps, router }) {
 }
 
 const styles = {
-  shell: { minHeight: "100vh" },
+  shell: { minHeight: "100vh", backgroundColor: "#0B1020" },
 
+  // Header: deeper Nexio tone + premium blur
   header: {
     position: "sticky",
     top: 0,
     zIndex: 50,
-    background: "rgba(11,16,32,0.78)",
+    background: "rgba(11,16,32,0.86)", // #0B1020 with premium opacity
     borderBottom: "1px solid rgba(255,255,255,0.08)",
-    backdropFilter: "blur(12px)",
+    backdropFilter: "blur(14px)",
   },
   headerInner: {
     maxWidth: 1100,
@@ -115,16 +130,16 @@ const styles = {
     alignItems: "center",
     gap: 12,
     textDecoration: "none",
-    color: "#e8eefc",
+    color: "#E8EEFC",
   },
   logoImg: {
-    borderRadius: 12,
+    borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.12)",
     background: "rgba(255,255,255,0.06)",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+    boxShadow: "0 12px 34px rgba(0,0,0,0.45)",
   },
-  brandName: { fontWeight: 950, letterSpacing: 0.2 },
-  brandSub: { fontSize: 12, color: "rgba(232,238,252,0.7)" },
+  brandName: { fontWeight: 950, letterSpacing: 0.2, color: "#E8EEFC" },
+  brandSub: { fontSize: 12, color: "rgba(232,238,252,0.70)" },
 
   nav: {
     display: "flex",
@@ -133,6 +148,8 @@ const styles = {
     flexWrap: "wrap",
     justifyContent: "flex-end",
   },
+
+  // Base nav link: calmer, more premium
   navLink: {
     textDecoration: "none",
     color: "rgba(232,238,252,0.78)",
@@ -140,21 +157,26 @@ const styles = {
     fontWeight: 850,
     padding: "8px 10px",
     borderRadius: 12,
-    border: "1px solid transparent",
-    background: "transparent",
+    border: "1px solid rgba(255,255,255,0.00)",
+    background: "rgba(255,255,255,0.00)",
+    transition: "background 180ms ease, border-color 180ms ease, color 180ms ease",
   },
+
+  // Active: violet-tinted (Nexio DNA)
   navActive: {
-    color: "#e8eefc",
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.10)",
+    color: "#E8EEFC",
+    background: "rgba(124,58,237,0.16)", // violet
+    border: "1px solid rgba(124,58,237,0.35)",
+    boxShadow: "0 10px 28px rgba(124,58,237,0.12)",
   },
 
   content: { minHeight: "calc(100vh - 140px)" },
 
+  // Footer: consistent depth
   footer: {
     borderTop: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(11,16,32,0.65)",
-    backdropFilter: "blur(10px)",
+    background: "rgba(11,16,32,0.74)",
+    backdropFilter: "blur(12px)",
   },
   footerInner: {
     maxWidth: 1100,
@@ -168,9 +190,13 @@ const styles = {
     color: "rgba(232,238,252,0.65)",
     fontSize: 12,
   },
-  footerLeft: { opacity: 0.9 },
+  footerLeft: { opacity: 0.95, color: "rgba(232,238,252,0.70)" },
   footerRight: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
-  footerLink: { color: "rgba(232,238,252,0.78)", textDecoration: "none", fontWeight: 800 },
+  footerLink: {
+    color: "rgba(232,238,252,0.82)",
+    textDecoration: "none",
+    fontWeight: 850,
+  },
   footerMuted: { color: "rgba(232,238,252,0.55)" },
   dot: { opacity: 0.6 },
 };
