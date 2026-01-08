@@ -1,86 +1,149 @@
+// pages/index.js
 export default function Home() {
   return (
     <main style={styles.page}>
       <div style={styles.container}>
-        <header style={styles.header}>
-          <div style={styles.badge}>NEXIO.GG</div>
-          <h1 style={styles.h1}>AI-powered esports analytics</h1>
-          <p style={styles.lead}>
-            Post-match performance insights for competitive players.
+        {/* Top bar */}
+        <div style={styles.topRow}>
+          <div style={styles.brand}>
+            <div style={styles.logoMark}>N</div>
+            <div>
+              <div style={styles.brandName}>Nexio.gg</div>
+              <div style={styles.brandSub}>AI-powered esports analytics</div>
+            </div>
+          </div>
+
+          <div style={styles.topActions}>
+            <a href="/terms" style={styles.topLink}>
+              Terms
+            </a>
+            <span style={styles.dot}>•</span>
+            <a href="/privacy" style={styles.topLink}>
+              Privacy
+            </a>
+          </div>
+        </div>
+
+        {/* Hero */}
+        <header style={styles.hero}>
+          <div style={styles.badge}>BETA</div>
+
+          <h1 style={styles.h1}>
+            Premium insights for{" "}
+            <span style={styles.gradText}>League of Legends</span>.
+          </h1>
+
+          <p style={styles.p}>
+            Post-match performance insights using publicly available game data.
             <br />
-            Starting with League of Legends — more games coming soon.
+            More games coming soon.
           </p>
 
           <div style={styles.ctaRow}>
             <a href="/demo" style={styles.primaryBtn}>
-              Try Live Demo
+              Try the Demo
+              <span style={styles.btnArrow}>→</span>
             </a>
-            <a href="#what-you-get" style={styles.secondaryBtn}>
-              What you get
+
+            <a href="#features" style={styles.secondaryBtn}>
+              See features
             </a>
+          </div>
+
+          <div style={styles.metaRow}>
+            <div style={styles.metaPill}>No real-time in-game assistance</div>
+            <div style={styles.metaPill}>No automation / scripting</div>
+            <div style={styles.metaPill}>No betting / gambling</div>
+            <div style={styles.metaPill}>No gameplay modification</div>
           </div>
         </header>
 
-        <section id="what-you-get" style={styles.card}>
-          <h2 style={styles.h2}>What you’ll get</h2>
+        {/* Feature Card */}
+        <section id="features" style={styles.featureCard}>
+          <div style={styles.featureHeader}>
+            <div>
+              <div style={styles.featureTitle}>What you’ll get</div>
+              <div style={styles.featureSub}>
+                Clean, fast, and readable analytics — built for clarity.
+              </div>
+            </div>
+
+            <div style={styles.statusPills}>
+              <div style={styles.pill}>LoL</div>
+              <div style={styles.pillSoft}>More soon</div>
+            </div>
+          </div>
+
           <div style={styles.grid}>
-            <div style={styles.feature}>
-              <div style={styles.featureTitle}>KDA trend</div>
-              <div style={styles.featureText}>
-                Understand recent performance patterns and consistency.
+            <div style={styles.card}>
+              <div style={styles.cardTop}>
+                <div style={styles.iconWrap}>📊</div>
+                <div style={styles.cardTitle}>Recent performance</div>
+              </div>
+              <div style={styles.cardText}>
+                KDA trend, winrate snapshot, and recent match-based signals.
               </div>
             </div>
 
-            <div style={styles.feature}>
-              <div style={styles.featureTitle}>Best champion</div>
-              <div style={styles.featureText}>
-                Identify your strongest picks based on recent matches.
+            <div style={styles.card}>
+              <div style={styles.cardTop}>
+                <div style={styles.iconWrap}>🧠</div>
+                <div style={styles.cardTitle}>Insights-first UX</div>
+              </div>
+              <div style={styles.cardText}>
+                Minimal noise. Clear visuals. Built for quick understanding.
               </div>
             </div>
 
-            <div style={styles.feature}>
-              <div style={styles.featureTitle}>Role distribution</div>
-              <div style={styles.featureText}>
-                See how your roles split over time and where you perform best.
+            <div style={styles.card}>
+              <div style={styles.cardTop}>
+                <div style={styles.iconWrap}>🎯</div>
+                <div style={styles.cardTitle}>Role distribution</div>
+              </div>
+              <div style={styles.cardText}>
+                A compact overview of your most played roles (recent sample).
+              </div>
+            </div>
+
+            <div style={styles.card}>
+              <div style={styles.cardTop}>
+                <div style={styles.iconWrap}>🛡️</div>
+                <div style={styles.cardTitle}>Policy-aware</div>
+              </div>
+              <div style={styles.cardText}>
+                Designed to avoid automation, gameplay modification, or real-time
+                assistance.
               </div>
             </div>
           </div>
         </section>
 
-        <section style={{ ...styles.card, marginTop: 14 }}>
-          <h2 style={styles.h2}>What Nexio.gg does not do</h2>
-          <div style={styles.boundaryWrap}>
-            <div style={styles.boundaryItem}>No real-time in-game assistance</div>
-            <div style={styles.boundaryItem}>No automation or scripting</div>
-            <div style={styles.boundaryItem}>No coaching / decision guidance</div>
-            <div style={styles.boundaryItem}>No betting, gambling, or wagering</div>
-            <div style={styles.boundaryItem}>No gameplay modification</div>
-            <div style={styles.boundaryItem}>No competitive advantages</div>
-          </div>
-
-          <div style={styles.disclaimerBox}>
-            <div style={styles.disclaimerTitle}>Disclaimer</div>
-            <div style={styles.disclaimerText}>
-              Nexio.gg is not affiliated with, endorsed, sponsored, or approved by Riot Games.
-              Riot Games and associated properties are trademarks or registered trademarks of Riot Games, Inc.
-            </div>
+        {/* Bottom disclaimer */}
+        <section style={styles.disclaimerCard}>
+          <div style={styles.disclaimerTitle}>Disclaimer</div>
+          <div style={styles.disclaimerText}>
+            Nexio.gg is not affiliated with, endorsed, sponsored, or approved by
+            Riot Games.
           </div>
         </section>
 
+        {/* Footer */}
         <footer style={styles.footer}>
           <div style={styles.footerLeft}>
-            <div style={styles.footerSmall}>© {new Date().getFullYear()} Nexio.gg</div>
-            <div style={styles.footerSmall}>
-              Nexio.gg is not affiliated with Riot Games.
-            </div>
+            © {new Date().getFullYear()} Nexio.gg
           </div>
-
-          <div style={styles.footerLinks}>
-            <a href="/terms" style={styles.link}>Terms</a>
+          <div style={styles.footerRight}>
+            <a href="/demo" style={styles.footerLink}>
+              Demo
+            </a>
             <span style={styles.dot}>•</span>
-            <a href="/privacy" style={styles.link}>Privacy</a>
+            <a href="/terms" style={styles.footerLink}>
+              Terms
+            </a>
             <span style={styles.dot}>•</span>
-            <a href="/demo" style={styles.link}>Demo</a>
+            <a href="/privacy" style={styles.footerLink}>
+              Privacy
+            </a>
           </div>
         </footer>
       </div>
@@ -94,10 +157,47 @@ const styles = {
     background:
       "radial-gradient(1200px 600px at 20% 10%, rgba(124,58,237,0.25), transparent 60%), radial-gradient(900px 500px at 80% 20%, rgba(59,130,246,0.18), transparent 55%), #0b1020",
     color: "#e8eefc",
-    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
   },
-  container: { maxWidth: 980, margin: "0 auto", padding: "56px 20px 28px" },
-  header: { marginBottom: 18 },
+  container: {
+    maxWidth: 1100,
+    margin: "0 auto",
+    padding: "28px 20px 34px",
+  },
+
+  topRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 26,
+  },
+  brand: { display: "flex", alignItems: "center", gap: 12 },
+  logoMark: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    display: "grid",
+    placeItems: "center",
+    fontWeight: 900,
+    background: "rgba(255,255,255,0.07)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+  },
+  brandName: { fontWeight: 900, letterSpacing: 0.2 },
+  brandSub: { fontSize: 12, color: "rgba(232,238,252,0.7)", marginTop: 2 },
+
+  topActions: { display: "flex", alignItems: "center", gap: 10 },
+  topLink: { color: "rgba(232,238,252,0.8)", textDecoration: "none" },
+  dot: { opacity: 0.6 },
+
+  hero: {
+    padding: "34px 26px",
+    borderRadius: 22,
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.10)",
+    boxShadow: "0 26px 90px rgba(0,0,0,0.45)",
+    backdropFilter: "blur(10px)",
+  },
   badge: {
     display: "inline-block",
     padding: "6px 10px",
@@ -106,24 +206,43 @@ const styles = {
     border: "1px solid rgba(255,255,255,0.12)",
     fontSize: 12,
     letterSpacing: 1,
+    width: "fit-content",
   },
-  h1: { margin: "14px 0 10px", fontSize: 46, lineHeight: 1.05, fontWeight: 900 },
-  lead: { margin: 0, color: "rgba(232,238,252,0.78)", maxWidth: 720, fontSize: 16, lineHeight: 1.6 },
-  ctaRow: { display: "flex", gap: 12, marginTop: 22, flexWrap: "wrap" },
+  h1: {
+    margin: "14px 0 10px",
+    fontSize: 52,
+    lineHeight: 1.05,
+    letterSpacing: -0.8,
+  },
+  gradText: {
+    background:
+      "linear-gradient(135deg, rgba(124,58,237,1), rgba(59,130,246,1))",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+  },
+  p: { margin: 0, color: "rgba(232,238,252,0.78)", maxWidth: 720 },
+
+  ctaRow: { display: "flex", gap: 12, flexWrap: "wrap", marginTop: 18 },
   primaryBtn: {
-    display: "inline-block",
-    padding: "12px 16px",
-    borderRadius: 12,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "12px 14px",
+    borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.18)",
-    background: "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
+    background:
+      "linear-gradient(135deg, rgba(124,58,237,0.95), rgba(59,130,246,0.9))",
     color: "#fff",
-    fontWeight: 800,
+    fontWeight: 900,
     textDecoration: "none",
+    boxShadow: "0 14px 40px rgba(0,0,0,0.35)",
   },
+  btnArrow: { opacity: 0.9, fontWeight: 900 },
   secondaryBtn: {
-    display: "inline-block",
-    padding: "12px 16px",
-    borderRadius: 12,
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "12px 14px",
+    borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,0.22)",
     color: "rgba(232,238,252,0.9)",
@@ -131,55 +250,94 @@ const styles = {
     textDecoration: "none",
   },
 
-  card: {
-    marginTop: 18,
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.10)",
-    borderRadius: 18,
-    padding: 20,
-    boxShadow: "0 20px 80px rgba(0,0,0,0.35)",
-    backdropFilter: "blur(10px)",
-  },
-  h2: { margin: 0, fontSize: 16, fontWeight: 900 },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-    gap: 12,
-    marginTop: 14,
-  },
-  feature: {
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.03)",
-    padding: 14,
-  },
-  featureTitle: { fontWeight: 900, marginBottom: 6 },
-  featureText: { color: "rgba(232,238,252,0.72)", fontSize: 13, lineHeight: 1.5 },
-
-  boundaryWrap: {
+  metaRow: {
     display: "flex",
     flexWrap: "wrap",
     gap: 10,
-    marginTop: 12,
+    marginTop: 18,
   },
-  boundaryItem: {
-    padding: "10px 12px",
+  metaPill: {
+    padding: "8px 10px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(0,0,0,0.22)",
     fontSize: 12,
-    color: "rgba(232,238,252,0.85)",
-    fontWeight: 700,
+    color: "rgba(232,238,252,0.78)",
   },
-  disclaimerBox: {
-    marginTop: 14,
-    borderRadius: 16,
+
+  featureCard: {
+    marginTop: 18,
+    padding: "18px 18px",
+    borderRadius: 22,
+    background: "rgba(255,255,255,0.03)",
     border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.02)",
+    boxShadow: "0 26px 90px rgba(0,0,0,0.35)",
+    backdropFilter: "blur(10px)",
+  },
+  featureHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    padding: "6px 6px 14px",
+  },
+  featureTitle: { fontWeight: 900, fontSize: 14 },
+  featureSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.7)" },
+  statusPills: { display: "flex", gap: 10, alignItems: "center" },
+  pill: {
+    padding: "6px 10px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(0,0,0,0.22)",
+    fontWeight: 900,
+    fontSize: 12,
+  },
+  pillSoft: {
+    padding: "6px 10px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.05)",
+    fontWeight: 800,
+    fontSize: 12,
+    color: "rgba(232,238,252,0.75)",
+  },
+
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gap: 12,
+    marginTop: 6,
+    padding: 6,
+  },
+  card: {
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.18)",
     padding: 14,
   },
-  disclaimerTitle: { fontWeight: 900, fontSize: 13, marginBottom: 6 },
-  disclaimerText: { color: "rgba(232,238,252,0.70)", fontSize: 12, lineHeight: 1.6 },
+  cardTop: { display: "flex", alignItems: "center", gap: 10 },
+  iconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    display: "grid",
+    placeItems: "center",
+    background: "rgba(255,255,255,0.07)",
+    border: "1px solid rgba(255,255,255,0.10)",
+  },
+  cardTitle: { fontWeight: 900 },
+  cardText: { marginTop: 10, color: "rgba(232,238,252,0.72)", fontSize: 12 },
+
+  disclaimerCard: {
+    marginTop: 16,
+    padding: "16px 18px",
+    borderRadius: 22,
+    background: "rgba(255,255,255,0.03)",
+    border: "1px solid rgba(255,255,255,0.10)",
+  },
+  disclaimerTitle: { fontWeight: 900, marginBottom: 6 },
+  disclaimerText: { color: "rgba(232,238,252,0.72)", fontSize: 12 },
 
   footer: {
     marginTop: 18,
@@ -188,12 +346,11 @@ const styles = {
     justifyContent: "space-between",
     gap: 12,
     flexWrap: "wrap",
-    color: "rgba(232,238,252,0.65)",
+    color: "rgba(232,238,252,0.6)",
     fontSize: 12,
+    padding: "0 6px",
   },
-  footerLeft: { display: "flex", flexDirection: "column", gap: 6 },
-  footerSmall: { opacity: 0.9 },
-  footerLinks: { display: "flex", alignItems: "center", gap: 10 },
-  link: { color: "rgba(232,238,252,0.85)", textDecoration: "none", fontWeight: 700 },
-  dot: { opacity: 0.6 },
+  footerLeft: { opacity: 0.9 },
+  footerRight: { display: "flex", alignItems: "center", gap: 10 },
+  footerLink: { color: "rgba(232,238,252,0.8)", textDecoration: "none" },
 };
