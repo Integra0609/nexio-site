@@ -1,13 +1,6 @@
 // pages/analyzer.js
 import { useEffect, useMemo, useState } from "react";
 
-/**
- * =========================================================
- * CONFIG
- * =========================================================
- * Eğer .env kullanmak istersen:
- * NEXT_PUBLIC_SUPABASE_FN_URL=... diye ekleyebilirsin.
- */
 const SUPABASE_FN_URL =
   process.env.NEXT_PUBLIC_SUPABASE_FN_URL ||
   "https://lpoxlbbcmpxbfpfrufvf.supabase.co/functions/v1/get-player-insights";
@@ -114,7 +107,6 @@ export default function Analyzer() {
     if (n) setName(n);
     if (r) setRegion(r);
 
-    // Auto-run if name exists in URL
     if (n) setTimeout(() => run(n, r || "tr1", { syncUrl: false }), 60);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -122,12 +114,10 @@ export default function Analyzer() {
   const parsed = useMemo(() => {
     if (!raw) return null;
     const insights = raw.insights || {};
-
     return {
       ok: raw.ok ?? true,
       source: raw.source ?? "LIVE",
       puuid: raw.puuid ?? null,
-
       sampleSize: insights.sample_size ?? null,
       last10: insights.kda_trend?.last_10 ?? null,
       best: insights.best_champion ?? null,
@@ -259,7 +249,6 @@ export default function Analyzer() {
   return (
     <main style={styles.page}>
       <div style={styles.container}>
-        {/* HERO */}
         <header style={styles.hero}>
           <div style={styles.badgeRow}>
             <span style={styles.badge}>ANALYZER</span>
@@ -272,16 +261,14 @@ export default function Analyzer() {
           </h1>
 
           <p style={styles.lead}>
-            Clean summaries based on recently available public match data. Shareable
-            links included — built for clarity, designed to be policy-aware.
+            Clean summaries based on recently available public match data. Shareable links included — built for clarity, designed to be policy-aware.
           </p>
         </header>
 
-        {/* CARD */}
         <section style={styles.card}>
-          {/* FORM */}
-          <div style={styles.formGrid}>
-            <div style={styles.field}>
+          {/* ✅ FORM: Overlap kesin yok (flex-wrap) */}
+          <div style={styles.formRow}>
+            <div style={styles.fieldGrow}>
               <label style={styles.label}>Summoner name</label>
               <input
                 value={name}
@@ -293,7 +280,7 @@ export default function Analyzer() {
               />
             </div>
 
-            <div style={styles.field}>
+            <div style={styles.fieldFixed}>
               <label style={styles.label}>Region</label>
               <select
                 value={region}
@@ -308,7 +295,7 @@ export default function Analyzer() {
               </select>
             </div>
 
-            <div style={styles.fieldBtn}>
+            <div style={styles.btnFixed}>
               <label style={styles.label}>&nbsp;</label>
               <button
                 onClick={() => run()}
@@ -323,35 +310,35 @@ export default function Analyzer() {
               </button>
             </div>
 
-            <div style={styles.fieldBtn}>
+            <div style={styles.btnFixed}>
               <label style={styles.label}>&nbsp;</label>
               <button onClick={reset} style={styles.resetBtn}>
                 Reset
               </button>
             </div>
+          </div>
 
-            {/* Quick presets full width */}
-            <div style={styles.quickRowFull}>
-              <div style={styles.quickLeft}>
-                <span style={styles.quickIcon}>⚡</span>
-                <span style={styles.quickLabel}>Quick</span>
-              </div>
-              <div style={styles.quickChips}>
-                {quickPresets.map((p) => (
-                  <button
-                    key={p.label}
-                    style={styles.chipBtn}
-                    type="button"
-                    onClick={() => {
-                      setName(p.name);
-                      setRegion(p.region);
-                      run(p.name, p.region);
-                    }}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
+          {/* QUICK: full width */}
+          <div style={styles.quickRowFull}>
+            <div style={styles.quickLeft}>
+              <span style={styles.quickIcon}>⚡</span>
+              <span style={styles.quickLabel}>Quick</span>
+            </div>
+            <div style={styles.quickChips}>
+              {quickPresets.map((p) => (
+                <button
+                  key={p.label}
+                  style={styles.chipBtn}
+                  type="button"
+                  onClick={() => {
+                    setName(p.name);
+                    setRegion(p.region);
+                    run(p.name, p.region);
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -361,7 +348,6 @@ export default function Analyzer() {
             </div>
           ) : null}
 
-          {/* RESULT HEAD */}
           <div style={styles.resultHeader}>
             <div>
               <div style={styles.sectionTitle}>Result</div>
@@ -377,8 +363,7 @@ export default function Analyzer() {
                 </span>
                 <span style={styles.dot}>•</span>
                 <span style={styles.metaItem}>
-                  Source:{" "}
-                  <span style={styles.mono}>{parsed?.source || "—"}</span>
+                  Source: <span style={styles.mono}>{parsed?.source || "—"}</span>
                 </span>
               </div>
             </div>
@@ -395,13 +380,11 @@ export default function Analyzer() {
                 const ok = await copy(buildResultLink());
                 if (!ok) alert("Copy failed.");
               }}
-              title={!name.trim() ? "Enter a summoner name first" : "Copy link"}
             >
               ⧉ Copy result link
             </button>
           </div>
 
-          {/* KPI GRID */}
           <div style={styles.grid}>
             <div style={glow("sample")}>
               <StatCard
@@ -422,9 +405,7 @@ export default function Analyzer() {
             <div style={glow("kda")}>
               <StatCard
                 title="Recent KDA"
-                value={
-                  parsed?.last10?.kda != null ? parsed.last10.kda : "—"
-                }
+                value={parsed?.last10?.kda != null ? parsed.last10.kda : "—"}
                 sub={
                   parsed?.last10
                     ? `${parsed.last10.games} game • ${parsed.last10.winrate_pct}% WR`
@@ -459,24 +440,18 @@ export default function Analyzer() {
           </div>
 
           <div style={styles.noteBox}>
-            <strong>Note:</strong> Post-match analytics only. Nexio.gg provides no
-            real-time assistance, automation, scripting, or gameplay modification.
+            <strong>Note:</strong> Post-match analytics only. Nexio.gg provides no real-time assistance, automation, scripting, or gameplay modification.
           </div>
 
-          {/* BEST CHAMP */}
           <div style={{ marginTop: 18 }}>
             <div style={styles.sectionTitle}>Best champion breakdown</div>
-            <div style={styles.sectionSub}>
-              Compact breakdown from the recent sample.
-            </div>
+            <div style={styles.sectionSub}>Compact breakdown from the recent sample.</div>
 
             {parsed?.best ? (
               <div style={styles.bestBox}>
                 <div style={styles.bestTop}>
                   <div style={styles.bestIcon}>
-                    {String(parsed.best.champion_name || "C")
-                      .slice(0, 1)
-                      .toUpperCase()}
+                    {String(parsed.best.champion_name || "C").slice(0, 1).toUpperCase()}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={styles.bestName}>{parsed.best.champion_name}</div>
@@ -498,26 +473,20 @@ export default function Analyzer() {
               </div>
             ) : (
               <div style={styles.emptyBox}>
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>
-                  Not enough data yet
-                </div>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>Not enough data yet</div>
                 Best champion breakdown will appear after more recent matches are available.
               </div>
             )}
           </div>
 
-          {/* ROLES */}
           <div style={{ marginTop: 18 }}>
             <div style={styles.sectionTitle}>Role distribution</div>
-            <div style={styles.sectionSub}>
-              Based on recent matches — mini bar chart.
-            </div>
+            <div style={styles.sectionSub}>Based on recent matches — mini bar chart.</div>
             <div style={{ marginTop: 10 }}>
               <RoleBars roles={parsed?.roles} />
             </div>
           </div>
 
-          {/* POLICY */}
           <div style={{ marginTop: 18 }}>
             <div style={styles.policyBox}>
               <div style={styles.sectionTitle}>Policy & disclaimer</div>
@@ -542,21 +511,14 @@ export default function Analyzer() {
           </div>
         </section>
 
-        {/* FOOTER */}
         <footer style={styles.footer}>
           <div style={styles.footerSmall}>© 2026 Nexio.gg</div>
           <div style={styles.footerLinks}>
-            <a href="/" style={styles.footerLink}>
-              Home
-            </a>
+            <a href="/" style={styles.footerLink}>Home</a>
             <span style={styles.dot}>•</span>
-            <a href="/terms" style={styles.footerLink}>
-              Terms
-            </a>
+            <a href="/terms" style={styles.footerLink}>Terms</a>
             <span style={styles.dot}>•</span>
-            <a href="/privacy" style={styles.footerLink}>
-              Privacy
-            </a>
+            <a href="/privacy" style={styles.footerLink}>Privacy</a>
           </div>
         </footer>
       </div>
@@ -571,11 +533,7 @@ const styles = {
       "radial-gradient(1200px 600px at 15% 12%, rgba(124,58,237,0.22), transparent 60%), radial-gradient(900px 500px at 85% 18%, rgba(59,130,246,0.18), transparent 55%), #070b18",
     color: "#e8eefc",
   },
-  container: {
-    maxWidth: 1040,
-    margin: "0 auto",
-    padding: "42px 20px 26px",
-  },
+  container: { maxWidth: 1040, margin: "0 auto", padding: "42px 20px 26px" },
 
   hero: { marginBottom: 16 },
   badgeRow: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
@@ -606,17 +564,11 @@ const styles = {
     fontFamily: "ui-serif, Georgia, serif",
   },
   gradWord: {
-    background:
-      "linear-gradient(90deg, rgba(124,58,237,1), rgba(59,130,246,1))",
+    background: "linear-gradient(90deg, rgba(124,58,237,1), rgba(59,130,246,1))",
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
   },
-  lead: {
-    margin: 0,
-    maxWidth: 820,
-    color: "rgba(232,238,252,0.72)",
-    lineHeight: 1.6,
-  },
+  lead: { margin: 0, maxWidth: 820, color: "rgba(232,238,252,0.72)", lineHeight: 1.6 },
 
   card: {
     marginTop: 18,
@@ -628,24 +580,16 @@ const styles = {
     backdropFilter: "blur(10px)",
   },
 
-  // ✅ FINAL FIX: FLEX WRAP → overlap yok
-  formGrid: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 12,
-    alignItems: "flex-end",
-  },
-  field: { flex: "1 1 360px", minWidth: 260 },
-  fieldBtn: { flex: "0 0 180px", minWidth: 160 },
+  // ✅ Overlap kesin yok: flex + wrap
+  formRow: { display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" },
+  fieldGrow: { flex: "1 1 520px", minWidth: 320 },
+  fieldFixed: { flex: "0 0 260px", minWidth: 220 },
+  btnFixed: { flex: "0 0 180px", minWidth: 160 },
 
-  label: {
-    display: "block",
-    fontSize: 12,
-    color: "rgba(232,238,252,0.75)",
-    marginBottom: 6,
-  },
+  label: { display: "block", fontSize: 12, color: "rgba(232,238,252,0.75)", marginBottom: 6 },
   input: {
     width: "100%",
+    boxSizing: "border-box",
     padding: "12px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.14)",
@@ -655,6 +599,7 @@ const styles = {
   },
   select: {
     width: "100%",
+    boxSizing: "border-box",
     padding: "12px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.14)",
@@ -664,16 +609,17 @@ const styles = {
   },
   runBtn: {
     width: "100%",
+    boxSizing: "border-box",
     padding: "12px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.18)",
-    background:
-      "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
+    background: "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
     color: "#fff",
     fontWeight: 900,
   },
   resetBtn: {
     width: "100%",
+    boxSizing: "border-box",
     padding: "12px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.12)",
@@ -685,7 +631,7 @@ const styles = {
 
   quickRowFull: {
     width: "100%",
-    marginTop: 2,
+    marginTop: 10,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -696,11 +642,7 @@ const styles = {
   },
   quickLeft: { display: "flex", alignItems: "center", gap: 8 },
   quickIcon: { opacity: 0.9 },
-  quickLabel: {
-    fontSize: 12,
-    fontWeight: 900,
-    color: "rgba(232,238,252,0.75)",
-  },
+  quickLabel: { fontSize: 12, fontWeight: 900, color: "rgba(232,238,252,0.75)" },
   quickChips: { display: "flex", gap: 10, flexWrap: "wrap" },
   chipBtn: {
     border: "1px solid rgba(255,255,255,0.12)",
@@ -758,7 +700,7 @@ const styles = {
 
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
     gap: 12,
     marginTop: 14,
   },
@@ -768,12 +710,7 @@ const styles = {
     background: "rgba(255,255,255,0.03)",
     padding: 14,
   },
-  statTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
+  statTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 },
   statTitle: { fontSize: 12, color: "rgba(232,238,252,0.72)", fontWeight: 900 },
   statValue: { fontSize: 26, fontWeight: 900, marginTop: 8 },
   statSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.65)" },
@@ -835,8 +772,7 @@ const styles = {
     fontWeight: 900,
     color: "#fff",
     border: "1px solid rgba(255,255,255,0.14)",
-    background:
-      "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
+    background: "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
   },
   bestName: { fontWeight: 900, fontSize: 16 },
   bestSub: { marginTop: 2, fontSize: 12, color: "rgba(232,238,252,0.65)" },
@@ -848,28 +784,13 @@ const styles = {
     fontSize: 12,
     fontWeight: 900,
   },
-  bestGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 10,
-    padding: 14,
-  },
-  bestStat: {
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.03)",
-    padding: 12,
-  },
+  bestGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, padding: 14 },
+  bestStat: { borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)", padding: 12 },
   bestLabel: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
   bestValue: { marginTop: 6, fontWeight: 900, fontSize: 18 },
 
   rolesWrap: { display: "grid", gap: 12 },
-  roleRow: {
-    display: "grid",
-    gridTemplateColumns: "160px 1fr",
-    gap: 14,
-    alignItems: "center",
-  },
+  roleRow: { display: "grid", gridTemplateColumns: "160px 1fr", gap: 14, alignItems: "center" },
   roleLeft: { display: "grid", gap: 4 },
   roleName: { fontWeight: 900, fontSize: 13 },
   roleMeta: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
@@ -883,38 +804,14 @@ const styles = {
   roleBarInner: {
     height: "100%",
     borderRadius: 999,
-    background:
-      "linear-gradient(90deg, rgba(124,58,237,0.95), rgba(34,211,238,0.85))",
+    background: "linear-gradient(90deg, rgba(124,58,237,0.95), rgba(34,211,238,0.85))",
   },
 
-  policyBox: {
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.18)",
-    padding: 14,
-  },
+  policyBox: { borderRadius: 16, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(0,0,0,0.18)", padding: 14 },
   policyChips: { display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 },
-  policyChip: {
-    padding: "8px 12px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.06)",
-    fontSize: 12,
-    fontWeight: 800,
-    color: "rgba(232,238,252,0.88)",
-  },
+  policyChip: { padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", fontSize: 12, fontWeight: 800, color: "rgba(232,238,252,0.88)" },
 
-  footer: {
-    marginTop: 18,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-    color: "rgba(232,238,252,0.60)",
-    fontSize: 12,
-    paddingBottom: 10,
-  },
+  footer: { marginTop: 18, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", color: "rgba(232,238,252,0.60)", fontSize: 12, paddingBottom: 10 },
   footerSmall: { opacity: 0.9 },
   footerLinks: { display: "flex", alignItems: "center", gap: 10 },
   footerLink: { color: "rgba(232,238,252,0.78)", textDecoration: "none" },
