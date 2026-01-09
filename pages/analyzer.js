@@ -1,323 +1,271 @@
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/router";
 
 /**
- * Nexio.gg — Analyzer (Product polish)
- * - Loading skeletons
- * - Empty state copy
- * - Preset examples
- * - Shareable result link (query-based)
- * - Shareable card links (#card=...)
- * - Last updated (relative)
- * - Policy-aware chips + notes
+ * Analyzer (Premium Product UI)
+ * ✅ Form hizası fix
+ * ✅ Loading skeleton
+ * ✅ Empty-state + hızlı örnekler
+ * ✅ Copy toast (result link + card link)
+ * ✅ Last updated (1970 bug yok)
+ * ✅ Shareable URL (query + hash)
+ * ✅ Best champ + role mini bar chart + policy chips
+ * ✅ NEW: "What we analyzed" row
+ * ✅ NEW: Confidence / sample quality chip
  */
 
-// ✅ If you ever change project/function name, update this one line:
-const DEFAULT_FN_URL =
-  "https://lpoxlbbcmpxbfpfrufvf.supabase.co/functions/v1/get-player-insights";
-
-// Optional override via Vercel env:
-const SUPABASE_FN_URL =
-  process?.env?.NEXT_PUBLIC_SUPABASE_FN_URL || DEFAULT_FN_URL;
-
-const REGIONS = [
+const regions = [
   { value: "tr1", label: "TR (tr1)" },
   { value: "euw1", label: "EUW (euw1)" },
   { value: "na1", label: "NA (na1)" },
   { value: "kr", label: "KR (kr)" },
 ];
 
-const PRESETS = [
-  { name: "faker", region: "kr", label: "Faker (KR)" },
-  { name: "Doublelift", region: "na1", label: "Doublelift (NA)" },
-  { name: "Caps", region: "euw1", label: "Caps (EUW)" },
-  { name: "BrokenBlade", region: "euw1", label: "BrokenBlade (EUW)" },
+// Eğer env yoksa fallback (kendinle değiştir)
+const FALLBACK_FN_URL =
+  "https://YOUR_PROJECT_REF.supabase.co/functions/v1/get-player-insights";
+
+const INSIGHTS_FN_URL =
+  process.env.NEXT_PUBLIC_INSIGHTS_FN_URL || FALLBACK_FN_URL;
+
+const QUICK_SAMPLES = [
+  { name: "faker", region: "kr" },
+  { name: "Doublelift", region: "na1" },
+  { name: "Caps", region: "euw1" },
 ];
 
-function cx(...arr) {
-  return arr.filter(Boolean).join(" ");
+function clamp(n, a, b) {
+  return Math.max(a, Math.min(b, n));
 }
-
-function safeNum(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+function pct(n) {
+  if (n == null || Number.isNaN(Number(n))) return 0;
+  return clamp(Math.round(Number(n)), 0, 100);
 }
-
-function titleCase(s) {
-  if (!s) return "";
-  return String(s)
-    .toLowerCase()
-    .replace(/(^|\s|-|_)\w/g, (m) => m.toUpperCase());
-}
-
-function timeAgo(ts) {
-  const t = typeof ts === "string" ? Date.parse(ts) : Number(ts);
-  if (!Number.isFinite(t) || t <= 0) return null;
-
-  const diff = Date.now() - t;
-  if (diff < 0) return "just now";
-
-  const sec = Math.floor(diff / 1000);
-  if (sec < 10) return "just now";
-  if (sec < 60) return `${sec}s ago`;
-
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-
-  const day = Math.floor(hr / 24);
-  return `${day}d ago`;
-}
-
-async function copyText(text) {
+function formatDateTime(ts) {
   try {
-    await navigator.clipboard.writeText(text);
-    return true;
+    return new Date(ts).toLocaleString();
   } catch {
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.left = "-9999px";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-      return true;
-    } catch {
-      return false;
-    }
+    return "-";
   }
 }
-
-function buildResultUrl({ name, region }) {
-  const u = new URL(window.location.href);
-  u.pathname = "/analyzer";
-  u.searchParams.set("name", name);
-  u.searchParams.set("region", region);
-  // Remove card hash for "result link"
-  u.hash = "";
-  return u.toString();
+function buildResultUrl(origin, name, region) {
+  const n = encodeURIComponent((name || "").trim());
+  const r = encodeURIComponent(region || "tr1");
+  return `${origin}/analyzer?name=${n}&region=${r}`;
+}
+function niceRegionLabel(value) {
+  const found = regions.find((r) => r.value === value);
+  return found ? found.label : value || "-";
+}
+function normalizeName(n) {
+  return (n || "").trim();
+}
+function computeQuality(sampleSize) {
+  const s = Number(sampleSize || 0);
+  if (!s) return { level: "empty", label: "No sample", desc: "Run to analyze recent matches." };
+  if (s >= 12) return { level: "high", label: "High confidence", desc: "Good recent sample size." };
+  if (s >= 6) return { level: "med", label: "Medium confidence", desc: "Decent recent sample." };
+  return { level: "low", label: "Low confidence", desc: "Small recent sample." };
 }
 
-function buildCardUrl({ name, region, card }) {
-  const u = new URL(buildResultUrl({ name, region }));
-  u.hash = `card=${encodeURIComponent(card)}`;
-  return u.toString();
+function Icon({ kind }) {
+  const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none" };
+  const stroke = {
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  };
+
+  if (kind === "size") {
+    return (
+      <svg {...common}>
+        <path {...stroke} d="M4 7h16M7 4v6M17 4v6M6 20h12M9 17v6M15 17v6" />
+      </svg>
+    );
+  }
+  if (kind === "kda") {
+    return (
+      <svg {...common}>
+        <path {...stroke} d="M4 19V5" />
+        <path {...stroke} d="M4 19h16" />
+        <path {...stroke} d="M8 15l3-4 3 2 4-6" />
+      </svg>
+    );
+  }
+  if (kind === "id") {
+    return (
+      <svg {...common}>
+        <path
+          {...stroke}
+          d="M16 11c1.66 0 3-1.34 3-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3z"
+        />
+        <path {...stroke} d="M2 19c1.5-3 4-5 7-5" />
+        <path
+          {...stroke}
+          d="M16 14c-2.5 0-4.5 1.5-5.5 5H22c-.5-3.5-3-5-6-5z"
+        />
+      </svg>
+    );
+  }
+  if (kind === "share") {
+    return (
+      <svg {...common}>
+        <path {...stroke} d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" />
+        <path {...stroke} d="M16 6l-4-4-4 4" />
+        <path {...stroke} d="M12 2v14" />
+      </svg>
+    );
+  }
+  if (kind === "copy") {
+    return (
+      <svg {...common}>
+        <path {...stroke} d="M9 9h10v10H9z" />
+        <path
+          {...stroke}
+          d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"
+        />
+      </svg>
+    );
+  }
+  if (kind === "bolt") {
+    return (
+      <svg {...common}>
+        <path {...stroke} d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" />
+      </svg>
+    );
+  }
+  if (kind === "info") {
+    return (
+      <svg {...common}>
+        <path {...stroke} d="M12 22a10 10 0 1 0-10-10 10 10 0 0 0 10 10Z" />
+        <path {...stroke} d="M12 16v-5" />
+        <path {...stroke} d="M12 8h.01" />
+      </svg>
+    );
+  }
+  return null;
 }
 
-function SkeletonLine({ w = "100%", h = 12, r = 10, style }) {
+function SkeletonCard({ title, icon }) {
   return (
-    <div
-      style={{
-        width: w,
-        height: h,
-        borderRadius: r,
-        background:
-          "linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.12), rgba(255,255,255,0.06))",
-        backgroundSize: "200% 100%",
-        animation: "shimmer 1.1s linear infinite",
-        ...style,
-      }}
-    />
-  );
-}
-
-function StatCard({ id, title, value, sub, onShare, loading }) {
-  return (
-    <div id={id} style={styles.statCard}>
-      <div style={styles.statTop}>
-        <div style={styles.statTitle}>{title}</div>
-        <button onClick={onShare} style={styles.shareBtn} type="button">
-          ↗ Share
-        </button>
-      </div>
-
-      {loading ? (
-        <div style={{ marginTop: 10 }}>
-          <SkeletonLine w="48%" h={24} r={12} />
-          <SkeletonLine w="70%" h={12} r={10} style={{ marginTop: 10 }} />
+    <div className="nx-card nx-stat">
+      <div className="nx-stat-top">
+        <div className="nx-stat-title">
+          <span className="nx-icon">{icon}</span>
+          {title}
         </div>
-      ) : (
-        <>
-          <div style={styles.statValue}>{value ?? "—"}</div>
-          <div style={styles.statSub}>{sub ?? ""}</div>
-        </>
-      )}
+        <div className="nx-skel-pill" />
+      </div>
+      <div className="nx-skel-value" />
+      <div className="nx-skel-sub" />
     </div>
   );
 }
 
-function RoleBars({ roles, loading }) {
-  if (loading) {
-    return (
-      <div style={styles.sectionBox}>
-        <div style={styles.sectionHead}>
-          <div>
-            <div style={styles.sectionTitle}>Role distribution</div>
-            <div style={styles.sectionHint}>Based on recent matches — mini bar chart.</div>
-          </div>
+function StatCard({ id, title, icon, value, sub, onShare }) {
+  return (
+    <div id={id} className="nx-card nx-stat">
+      <div className="nx-stat-top">
+        <div className="nx-stat-title">
+          <span className="nx-icon">{icon}</span>
+          {title}
         </div>
 
-        <div style={{ marginTop: 12 }}>
-          {[1, 2, 3].map((i) => (
-            <div key={i} style={{ marginBottom: 12 }}>
-              <SkeletonLine w="28%" h={12} r={8} />
-              <SkeletonLine w="100%" h={10} r={999} style={{ marginTop: 8 }} />
-            </div>
-          ))}
-        </div>
+        {onShare ? (
+          <button onClick={onShare} className="nx-chip-btn" type="button">
+            <Icon kind="share" /> <span>Share</span>
+          </button>
+        ) : (
+          <span className="nx-chip-muted">—</span>
+        )}
       </div>
-    );
-  }
 
+      <div className="nx-stat-value">{value}</div>
+      {sub ? <div className="nx-stat-sub">{sub}</div> : null}
+    </div>
+  );
+}
+
+function RoleBars({ roles }) {
   if (!roles?.length) {
     return (
-      <div style={styles.sectionBox}>
-        <div style={styles.sectionHead}>
-          <div>
-            <div style={styles.sectionTitle}>Role distribution</div>
-            <div style={styles.sectionHint}>Based on recent matches — mini bar chart.</div>
-          </div>
+      <div className="nx-card nx-empty">
+        <div className="nx-empty-title">No role data yet.</div>
+        <div className="nx-empty-sub">
+          Run an analysis to see role distribution based on recent matches.
         </div>
-        <div style={styles.emptyBox}>No role data yet.</div>
       </div>
     );
   }
 
-  // Sort by pct desc
-  const sorted = [...roles].sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
+  const sorted = [...roles].sort((a, b) => (b?.pct ?? 0) - (a?.pct ?? 0));
 
   return (
-    <div style={styles.sectionBox}>
-      <div style={styles.sectionHead}>
-        <div>
-          <div style={styles.sectionTitle}>Role distribution</div>
-          <div style={styles.sectionHint}>Based on recent matches — mini bar chart.</div>
-        </div>
-      </div>
+    <div className="nx-card nx-role">
+      {sorted.map((r, idx) => {
+        const p = pct(r.pct);
+        const count = r.count ?? 0;
 
-      <div style={{ marginTop: 12 }}>
-        {sorted.map((r) => {
-          const pct = safeNum(r.pct) ?? 0;
-          const count = safeNum(r.count) ?? 0;
-          const role = String(r.role ?? "UNKNOWN").toUpperCase();
-
-          return (
-            <div key={role} style={styles.roleRow}>
-              <div style={styles.roleLeft}>
-                <div style={styles.roleName}>{role}</div>
-                <div style={styles.roleMeta}>
-                  {count} match • {pct}%
-                </div>
-              </div>
-
-              <div style={styles.roleBarWrap}>
-                <div style={styles.roleBarTrack}>
-                  <div
-                    style={{
-                      ...styles.roleBarFill,
-                      width: `${Math.max(0, Math.min(100, pct))}%`,
-                    }}
-                  />
-                </div>
+        return (
+          <div
+            key={r.role}
+            className={`nx-role-row ${idx === sorted.length - 1 ? "nx-role-last" : ""}`}
+          >
+            <div className="nx-role-left">
+              <div className="nx-role-name">{r.role}</div>
+              <div className="nx-role-meta">
+                {count} match{count === 1 ? "" : "es"} • {p}%
               </div>
             </div>
-          );
-        })}
-      </div>
+
+            <div className="nx-role-track">
+              <div className="nx-role-fill" style={{ width: `${p}%` }} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function ChampionBreakdown({ champ, loading }) {
-  if (loading) {
+function ChampionBreakdown({ bestChamp }) {
+  if (!bestChamp?.champion_name) {
     return (
-      <div style={styles.sectionBox}>
-        <div style={styles.sectionHead}>
-          <div>
-            <div style={styles.sectionTitle}>Best champion breakdown</div>
-            <div style={styles.sectionHint}>A compact breakdown from the recent sample.</div>
-          </div>
-        </div>
-        <div style={styles.champBox}>
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <div style={styles.champIcon} />
-            <div style={{ flex: 1 }}>
-              <SkeletonLine w="34%" h={14} r={8} />
-              <SkeletonLine w="52%" h={12} r={8} style={{ marginTop: 8 }} />
-            </div>
-            <div style={styles.pillBadge}>READY</div>
-          </div>
-          <div style={styles.champGrid}>
-            <div style={styles.champMini}>
-              <SkeletonLine w="30%" h={10} r={8} />
-              <SkeletonLine w="22%" h={16} r={10} style={{ marginTop: 8 }} />
-            </div>
-            <div style={styles.champMini}>
-              <SkeletonLine w="30%" h={10} r={8} />
-              <SkeletonLine w="22%" h={16} r={10} style={{ marginTop: 8 }} />
-            </div>
-          </div>
+      <div className="nx-card nx-empty">
+        <div className="nx-empty-title">Not enough data yet</div>
+        <div className="nx-empty-sub">
+          Best champion breakdown will appear after more recent matches are available.
         </div>
       </div>
     );
   }
 
-  if (!champ) {
-    return (
-      <div style={styles.sectionBox}>
-        <div style={styles.sectionHead}>
-          <div>
-            <div style={styles.sectionTitle}>Best champion breakdown</div>
-            <div style={styles.sectionHint}>A compact breakdown from the recent sample.</div>
-          </div>
-        </div>
-        <div style={styles.emptyBox}>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>Not enough data yet</div>
-          <div style={{ color: "rgba(232,238,252,0.7)" }}>
-            Best champion breakdown will appear after more recent matches are available.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const name = champ.champion_name || champ.name || "Best champion";
-  const games = safeNum(champ.games);
-  const avgKda = champ.avg_kda ?? champ.avgKDA ?? champ.kda;
+  const games = bestChamp.games ?? "-";
+  const kda = bestChamp.avg_kda ?? "-";
+  const initial = (bestChamp.champion_name || "?").slice(0, 1).toUpperCase();
 
   return (
-    <div style={styles.sectionBox}>
-      <div style={styles.sectionHead}>
-        <div>
-          <div style={styles.sectionTitle}>Best champion breakdown</div>
-          <div style={styles.sectionHint}>A compact breakdown from the recent sample.</div>
+    <div className="nx-card nx-champ">
+      <div className="nx-champ-top">
+        <div className="nx-champ-left">
+          <div className="nx-champ-avatar">{initial}</div>
+          <div>
+            <div className="nx-champ-name">{bestChamp.champion_name}</div>
+            <div className="nx-champ-sub">Best champion (recent)</div>
+          </div>
         </div>
+        <div className="nx-chip">READY</div>
       </div>
 
-      <div style={styles.champBox}>
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <div style={styles.champIconText}>{String(name).slice(0, 1).toUpperCase()}</div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 1000, fontSize: 16 }}>{name}</div>
-            <div style={{ color: "rgba(232,238,252,0.7)", fontSize: 12 }}>
-              Best champion (recent)
-            </div>
-          </div>
-          <div style={styles.pillBadge}>READY</div>
+      <div className="nx-champ-grid">
+        <div className="nx-mini">
+          <div className="nx-mini-label">Games</div>
+          <div className="nx-mini-value">{games}</div>
         </div>
-
-        <div style={styles.champGrid}>
-          <div style={styles.champMini}>
-            <div style={styles.champMiniLabel}>Games</div>
-            <div style={styles.champMiniValue}>{games ?? "—"}</div>
-          </div>
-          <div style={styles.champMini}>
-            <div style={styles.champMiniLabel}>Avg KDA</div>
-            <div style={styles.champMiniValue}>{avgKda ?? "—"}</div>
-          </div>
+        <div className="nx-mini">
+          <div className="nx-mini-label">Avg KDA</div>
+          <div className="nx-mini-value">{kda}</div>
         </div>
       </div>
     </div>
@@ -325,74 +273,63 @@ function ChampionBreakdown({ champ, loading }) {
 }
 
 export default function Analyzer() {
+  const router = useRouter();
+
   const [name, setName] = useState("");
   const [region, setRegion] = useState("tr1");
 
   const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState(null);
   const [error, setError] = useState(null);
 
   const [raw, setRaw] = useState(null);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Read query params on load
-  useEffect(() => {
-    const u = new URL(window.location.href);
-    const qName = u.searchParams.get("name") || "";
-    const qRegion = u.searchParams.get("region") || "tr1";
-    if (qName) setName(qName);
-    if (qRegion) setRegion(qRegion);
+  const [toast, setToast] = useState(null); // {text, ts}
+
+  const origin = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return window.location.origin;
   }, []);
 
+  const normalizedName = useMemo(() => normalizeName(name), [name]);
+
+  const resultLink = useMemo(() => {
+    if (!origin) return "";
+    return buildResultUrl(origin, name, region);
+  }, [origin, name, region]);
+
+  // query ile gelirse formu doldur
+  useEffect(() => {
+    if (!router.isReady) return;
+    const qName = typeof router.query.name === "string" ? router.query.name : "";
+    const qRegion =
+      typeof router.query.region === "string" ? router.query.region : "";
+
+    if (qName) setName(qName);
+    if (qRegion) setRegion(qRegion);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
+
   const parsed = useMemo(() => {
-    const insights = raw?.insights || raw?.data?.insights || null;
-    if (!insights) return null;
+    if (!raw?.insights) return null;
 
-    const sampleSize =
-      safeNum(insights.sample_size) ??
-      safeNum(insights.sampleSize) ??
-      safeNum(insights.sample) ??
-      null;
-
-    const last10 = insights.kda_trend?.last_10 || insights.last10 || null;
-    const last10Games = safeNum(last10?.games);
-    const last10Kda = last10?.kda ?? null;
-    const last10Wr = last10?.winrate_pct ?? null;
-
-    const bestChampion =
-      insights.best_champion || insights.bestChampion || null;
-
-    const roles =
-      insights.role_distribution || insights.roles || [];
-
-    const puuid = raw?.puuid || raw?.player?.puuid || raw?.player_puuid || null;
-
-    const source = raw?.source || raw?.debug?.source || raw?.meta?.source || "LIVE";
+    const s = raw.insights.sample_size ?? null;
+    const last10 = raw.insights.kda_trend?.last_10 ?? null;
+    const bestChamp = raw.insights.best_champion ?? null;
+    const roles = raw.insights.role_distribution ?? [];
 
     return {
-      sampleSize,
-      last10: { games: last10Games, kda: last10Kda, winrate_pct: last10Wr },
-      bestChampion,
+      ok: !!raw.ok,
+      source: raw.source || raw.meta?.source || "DEMO",
+      sampleSize: s,
+      last10,
+      bestChamp,
       roles,
-      puuid,
-      source,
+      puuid: raw.puuid || raw.player?.puuid || null,
     };
   }, [raw]);
 
-  // Auto-run if query has name (after first render sets state)
-  useEffect(() => {
-    const u = new URL(window.location.href);
-    const qName = u.searchParams.get("name");
-    if (!qName) return;
-
-    // Run only if we don't already have results
-    if (raw || loading) return;
-
-    // slight delay so state is set
-    const t = setTimeout(() => run(qName, u.searchParams.get("region") || "tr1"), 150);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const quality = useMemo(() => computeQuality(parsed?.sampleSize), [parsed]);
 
   useEffect(() => {
     if (!toast) return;
@@ -400,50 +337,67 @@ export default function Analyzer() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const setUrl = (newName, newRegion, card = null) => {
-    const u = new URL(window.location.href);
-    u.pathname = "/analyzer";
-    if (newName) u.searchParams.set("name", newName);
-    else u.searchParams.delete("name");
+  const showToast = (text) => setToast({ text, ts: Date.now() });
 
-    if (newRegion) u.searchParams.set("region", newRegion);
-    else u.searchParams.delete("region");
-
-    u.hash = card ? `card=${encodeURIComponent(card)}` : "";
-    window.history.replaceState({}, "", u.toString());
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
-  const run = async (forcedName, forcedRegion) => {
-    const trimmed = (forcedName ?? name).trim();
-    const reg = forcedRegion ?? region;
+  const copyResultLink = async () => {
+    if (!resultLink) return;
+    const ok = await copyToClipboard(resultLink);
+    ok ? showToast("Result link copied") : alert("Copy failed:\n" + resultLink);
+  };
 
+  const shareCard = async (cardKey) => {
+    if (!origin) return;
+    const url = `${resultLink}#${encodeURIComponent(cardKey)}`;
+    const ok = await copyToClipboard(url);
+    ok ? showToast("Card link copied") : alert("Copy failed:\n" + url);
+  };
+
+  const run = async (overrideName, overrideRegion) => {
     setError(null);
-    setRaw(null);
-    setLastUpdatedAt(null);
 
-    if (!trimmed) {
+    const n = (overrideName ?? name).trim();
+    const r = overrideRegion ?? region;
+
+    if (!n) {
       setError("Summoner name is required.");
       return;
     }
 
-    setUrl(trimmed, reg, null);
-
     setLoading(true);
+    setRaw(null);
     try {
-      const url = `${SUPABASE_FN_URL}?name=${encodeURIComponent(trimmed)}&region=${encodeURIComponent(reg)}`;
+      const url = `${INSIGHTS_FN_URL}?name=${encodeURIComponent(
+        n
+      )}&region=${encodeURIComponent(r)}`;
+
       const res = await fetch(url);
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(data?.error || data?.message || `Request failed (${res.status})`);
+        throw new Error(data?.error || data?.message || "Request failed");
       }
 
       setRaw(data);
-      setLastUpdatedAt(Date.now());
-      setToast({ type: "ok", text: "Insights updated." });
+      setLastUpdated(Date.now()); // ✅ 1970 bug yok
+
+      // shareable query url yaz
+      const nextUrl = `/analyzer?name=${encodeURIComponent(
+        n
+      )}&region=${encodeURIComponent(r)}`;
+      router.replace(nextUrl, undefined, { shallow: true });
     } catch (e) {
-      setError(e?.message || "Request failed.");
-      setToast({ type: "err", text: "Request failed." });
+      setRaw(null);
+      setLastUpdated(null);
+      setError(e?.message || "Request failed");
     } finally {
       setLoading(false);
     }
@@ -453,113 +407,85 @@ export default function Analyzer() {
     setName("");
     setRegion("tr1");
     setRaw(null);
+    setLastUpdated(null);
     setError(null);
-    setLastUpdatedAt(null);
-    setUrl("", "tr1", null);
+    router.replace("/analyzer", undefined, { shallow: true });
   };
 
-  const onPreset = (p) => {
-    setName(p.name);
-    setRegion(p.region);
-    setTimeout(() => run(p.name, p.region), 0);
+  const onEnter = (e) => {
+    if (e.key === "Enter") run();
   };
 
-  const copyResultLink = async () => {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setToast({ type: "err", text: "Enter a summoner name first." });
-      return;
-    }
-    const ok = await copyText(buildResultUrl({ name: trimmed, region }));
-    setToast({ type: ok ? "ok" : "err", text: ok ? "Result link copied." : "Copy failed." });
+  const applySample = (s) => {
+    setName(s.name);
+    setRegion(s.region);
+    run(s.name, s.region);
   };
-
-  const shareCard = async (cardId) => {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setToast({ type: "err", text: "Enter a summoner name first." });
-      return;
-    }
-    const ok = await copyText(buildCardUrl({ name: trimmed, region, card: cardId }));
-    setToast({ type: ok ? "ok" : "err", text: ok ? "Card link copied." : "Copy failed." });
-  };
-
-  const updatedLabel = useMemo(() => {
-    const ago = timeAgo(lastUpdatedAt);
-    return ago ? `Updated ${ago}` : null;
-  }, [lastUpdatedAt]);
 
   return (
-    <main style={styles.page}>
-      {/* Keyframes for shimmer */}
-      <style>{`
-        @keyframes shimmer {
-          0% { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-      `}</style>
-
-      <div style={styles.container}>
-        {/* HERO */}
-        <div style={styles.hero}>
-          <div style={styles.heroBadgeRow}>
-            <span style={styles.badge}>ANALYZER</span>
-            <div style={styles.badgeChips}>
-              <span style={styles.chip}>Post-match only</span>
-              <span style={styles.chip}>Shareable links</span>
-              <span style={styles.chip}>Policy-aware</span>
-            </div>
+    <main className="nx-page">
+      <div className="nx-container">
+        {/* Hero */}
+        <header className="nx-hero">
+          <div className="nx-hero-row">
+            <span className="nx-badge">ANALYZER</span>
+            <span className="nx-hero-meta">
+              Post-match only • Policy-aware • Shareable links
+            </span>
           </div>
 
-          <h1 style={styles.h1}>
-            Performance insights for <span style={styles.gradText}>esports</span>.
+          <h1 className="nx-h1">
+            Performance insights for <span className="nx-grad">esports</span>.
           </h1>
-          <p style={styles.heroP}>
-            Clean summaries based on recently available public match data. Shareable links included — built for clarity,
-            designed to be policy-aware.
+          <p className="nx-p">
+            Clean summaries based on recently available public match data. Built
+            for clarity — designed to be policy-aware.
           </p>
+        </header>
 
-          {/* Presets */}
-          <div style={styles.presetRow}>
-            <div style={styles.presetLabel}>Quick examples:</div>
-            <div style={styles.presetWrap}>
-              {PRESETS.map((p) => (
-                <button
-                  key={`${p.name}-${p.region}`}
-                  type="button"
-                  onClick={() => onPreset(p)}
-                  style={styles.presetBtn}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* MAIN CARD */}
-        <section style={styles.card}>
-          {/* FORM */}
-          <div style={styles.formRow}>
-            <div style={styles.field}>
-              <label style={styles.label}>Summoner name</label>
+        {/* Main card */}
+        <section className="nx-card nx-panel">
+          {/* Form */}
+          <div className="nx-form">
+            <div className="nx-field">
+              <label className="nx-label">Summoner name</label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onKeyDown={onEnter}
                 placeholder="e.g. faker"
-                style={styles.input}
+                className="nx-input"
                 autoComplete="off"
               />
+
+              {/* Quick samples */}
+              <div className="nx-samples">
+                <span className="nx-samples-label">
+                  <Icon kind="bolt" /> Quick:
+                </span>
+                {QUICK_SAMPLES.map((s) => (
+                  <button
+                    key={`${s.name}-${s.region}`}
+                    className="nx-chip-btn"
+                    type="button"
+                    onClick={() => applySample(s)}
+                    disabled={loading}
+                    title="Run sample"
+                  >
+                    {s.name} • {s.region.toUpperCase()}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div style={styles.fieldSmall}>
-              <label style={styles.label}>Region</label>
+            <div className="nx-field">
+              <label className="nx-label">Region</label>
               <select
                 value={region}
                 onChange={(e) => setRegion(e.target.value)}
-                style={styles.select}
+                className="nx-select"
               >
-                {REGIONS.map((r) => (
+                {regions.map((r) => (
                   <option key={r.value} value={r.value}>
                     {r.label}
                   </option>
@@ -567,501 +493,664 @@ export default function Analyzer() {
               </select>
             </div>
 
-            <div style={styles.btnCol}>
-              <label style={styles.label}>&nbsp;</label>
-              <button
-                type="button"
-                onClick={() => run()}
-                disabled={loading}
-                style={{
-                  ...styles.primaryBtn,
-                  opacity: loading ? 0.75 : 1,
-                  cursor: loading ? "not-allowed" : "pointer",
-                }}
-              >
-                {loading ? "Running..." : "Run"}
-              </button>
-            </div>
-
-            <div style={styles.btnCol}>
-              <label style={styles.label}>&nbsp;</label>
-              <button type="button" onClick={reset} style={styles.secondaryBtn}>
-                Reset
-              </button>
+            <div className="nx-actions">
+              <label className="nx-label">&nbsp;</label>
+              <div className="nx-actions-row">
+                <button
+                  className="nx-btn"
+                  onClick={() => run()}
+                  disabled={loading}
+                  type="button"
+                >
+                  {loading ? "Running..." : "Run"}
+                </button>
+                <button className="nx-btn-ghost" onClick={reset} type="button">
+                  Reset
+                </button>
+              </div>
             </div>
           </div>
 
           {error ? (
-            <div style={styles.alertError}>
-              <strong>Error:</strong> {error}
+            <div className="nx-alert">
+              <strong>Request failed:</strong> {error}
             </div>
           ) : null}
 
-          {/* RESULT HEADER */}
-          <div style={styles.resultHead}>
+          {/* Result header */}
+          <div className="nx-result-head">
             <div>
-              <div style={styles.resultTitle}>Result</div>
-              <div style={styles.resultMeta}>
+              <div className="nx-section-title">Result</div>
+              <div className="nx-result-meta">
                 {parsed ? (
                   <>
-                    {updatedLabel ? <span>{updatedLabel}</span> : <span>Updated just now</span>}
-                    <span style={styles.dot}>•</span>
-                    <span>
-                      Source: <strong>{parsed.source || "LIVE"}</strong>
+                    Last updated:{" "}
+                    <span className="nx-mono">
+                      {lastUpdated ? formatDateTime(lastUpdated) : "-"}
                     </span>
+                    <span className="nx-dot">•</span>
+                    Source: <span className="nx-mono">{parsed.source}</span>
                   </>
                 ) : (
-                  <span>
-                    Run an analysis to see results. You can share result links and card links.
-                  </span>
+                  "Run an analysis to see results. You can share result links and card links."
                 )}
               </div>
             </div>
 
-            <button type="button" onClick={copyResultLink} style={styles.copyBtn}>
-              Copy result link
-            </button>
-          </div>
-
-          {/* STATS */}
-          <div style={styles.grid}>
-            <StatCard
-              id="card=sample"
-              title="Sample size"
-              value={parsed?.sampleSize}
-              sub="Analyzed matches (recent)"
-              loading={loading}
-              onShare={() => shareCard("sample")}
-            />
-
-            <StatCard
-              id="card=kda"
-              title="Recent KDA"
-              value={
-                parsed?.last10?.kda != null ? Number(parsed.last10.kda).toFixed(2) : "—"
-              }
-              sub={
-                parsed?.last10?.games != null && parsed?.last10?.winrate_pct != null
-                  ? `${parsed.last10.games} game • ${parsed.last10.winrate_pct}% WR`
-                  : "Recent performance snapshot"
-              }
-              loading={loading}
-              onShare={() => shareCard("kda")}
-            />
-
-            <StatCard
-              id="card=player"
-              title="Player ID"
-              value={parsed?.puuid ? "Resolved" : "—"}
-              sub={parsed?.puuid ? "PUUID available" : "Identity resolution"}
-              loading={loading}
-              onShare={() => shareCard("player")}
-            />
-          </div>
-
-          {/* NOTE */}
-          <div style={styles.note}>
-            <strong>Note:</strong> This is post-match analytics only. Nexio.gg provides no real-time assistance, automation,
-            or gameplay modification.
-          </div>
-
-          {/* SECTIONS */}
-          <ChampionBreakdown champ={parsed?.bestChampion} loading={loading} />
-          <RoleBars roles={parsed?.roles} loading={loading} />
-
-          {/* POLICY */}
-          <div style={styles.sectionBox}>
-            <div style={styles.sectionHead}>
-              <div>
-                <div style={styles.sectionTitle}>Policy & disclaimer</div>
-                <div style={styles.sectionHint}>
-                  Nexio.gg is not affiliated with, endorsed, sponsored, or approved by Riot Games.
+            <div className="nx-result-right">
+              <button className="nx-copy" onClick={copyResultLink} type="button">
+                <Icon kind="copy" /> <span>Copy result link</span>
+              </button>
+              {parsed ? (
+                <div className="nx-pills">
+                  <span className="nx-pill">BETA</span>
+                  <span className={`nx-pill nx-pill-${quality.level}`}>
+                    {quality.label}
+                  </span>
                 </div>
+              ) : null}
+            </div>
+          </div>
+
+          {/* ✅ NEW: What we analyzed row */}
+          <div className="nx-overview">
+            <div className="nx-overview-left">
+              <div className="nx-overview-title">
+                <Icon kind="info" /> What we analyzed
               </div>
+
+              <div className="nx-overview-items">
+                <span className="nx-ov-item">
+                  Summoner:{" "}
+                  <span className="nx-mono">
+                    {normalizedName || "—"}
+                  </span>
+                </span>
+                <span className="nx-dot">•</span>
+                <span className="nx-ov-item">
+                  Region:{" "}
+                  <span className="nx-mono">{niceRegionLabel(region)}</span>
+                </span>
+                <span className="nx-dot">•</span>
+                <span className="nx-ov-item">
+                  Sample:{" "}
+                  <span className="nx-mono">
+                    {parsed?.sampleSize ?? "—"}
+                  </span>
+                </span>
+              </div>
+
+              <div className="nx-overview-sub">{quality.desc}</div>
             </div>
 
-            <div style={styles.chipsWrap}>
-              {[
-                "Post-match only",
-                "No real-time assistance",
-                "No automation / scripting",
-                "No betting / gambling",
-                "No gameplay modification",
-                "No competitive advantage",
-              ].map((t) => (
-                <span key={t} style={styles.chip2}>
-                  {t}
-                </span>
-              ))}
+            {parsed ? (
+              <button
+                className="nx-chip-btn"
+                type="button"
+                onClick={() => shareCard("result")}
+                title="Copy link to this section"
+              >
+                <Icon kind="share" /> Result section link
+              </button>
+            ) : (
+              <span className="nx-chip-muted">—</span>
+            )}
+          </div>
+
+          {/* Stats */}
+          <div className="nx-grid" id="result">
+            {loading ? (
+              <>
+                <SkeletonCard title="Sample size" icon={<Icon kind="size" />} />
+                <SkeletonCard title="Recent KDA" icon={<Icon kind="kda" />} />
+                <SkeletonCard title="Player ID" icon={<Icon kind="id" />} />
+              </>
+            ) : (
+              <>
+                <StatCard
+                  id="sample-size"
+                  title="Sample size"
+                  icon={<Icon kind="size" />}
+                  value={parsed?.sampleSize ?? "—"}
+                  sub="Analyzed matches (recent)"
+                  onShare={parsed ? () => shareCard("sample-size") : null}
+                />
+
+                <StatCard
+                  id="recent-kda"
+                  title="Recent KDA"
+                  icon={<Icon kind="kda" />}
+                  value={
+                    parsed?.last10?.kda != null ? String(parsed.last10.kda) : "—"
+                  }
+                  sub={
+                    parsed?.last10
+                      ? `${parsed.last10.games} game • ${parsed.last10.winrate_pct}% WR`
+                      : "Recent performance snapshot"
+                  }
+                  onShare={parsed ? () => shareCard("recent-kda") : null}
+                />
+
+                <StatCard
+                  id="player-id"
+                  title="Player ID"
+                  icon={<Icon kind="id" />}
+                  value={parsed?.puuid ? "Resolved" : "—"}
+                  sub={parsed?.puuid ? "PUUID available" : "Identity resolution"}
+                  onShare={parsed ? () => shareCard("player-id") : null}
+                />
+              </>
+            )}
+          </div>
+
+          {/* Note */}
+          <div className="nx-note">
+            <strong>Note:</strong> Post-match analytics only. No real-time
+            assistance, automation, scripting, or gameplay modification.
+          </div>
+
+          {/* Best champ */}
+          <div className="nx-section" id="best-champion">
+            <div className="nx-section-title">Best champion breakdown</div>
+            <div className="nx-section-sub">
+              A compact breakdown from the recent sample.
+            </div>
+            <div style={{ marginTop: 10 }}>
+              {loading ? (
+                <div className="nx-card nx-empty">
+                  <div className="nx-skel-value" />
+                  <div className="nx-skel-sub" />
+                </div>
+              ) : (
+                <ChampionBreakdown bestChamp={parsed?.bestChamp} />
+              )}
+            </div>
+          </div>
+
+          {/* Roles */}
+          <div className="nx-section" id="roles">
+            <div className="nx-section-title">Role distribution</div>
+            <div className="nx-section-sub">
+              Based on recent matches — mini bar chart.
+            </div>
+            <div style={{ marginTop: 10 }}>
+              {loading ? (
+                <div className="nx-card nx-empty">
+                  <div className="nx-skel-sub" />
+                  <div className="nx-skel-sub" />
+                  <div className="nx-skel-sub" />
+                </div>
+              ) : (
+                <RoleBars roles={parsed?.roles || []} />
+              )}
+            </div>
+          </div>
+
+          {/* Policy */}
+          <div className="nx-section" id="policy">
+            <div className="nx-card nx-policy">
+              <div className="nx-section-title">Policy & disclaimer</div>
+              <div className="nx-policy-text">
+                Nexio.gg is not affiliated with, endorsed, sponsored, or approved
+                by Riot Games.
+              </div>
+              <div className="nx-chips">
+                <span className="nx-chip">Post-match only</span>
+                <span className="nx-chip">No real-time assistance</span>
+                <span className="nx-chip">No automation / scripting</span>
+                <span className="nx-chip">No betting / gambling</span>
+                <span className="nx-chip">No gameplay modification</span>
+                <span className="nx-chip">No competitive advantage</span>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* TOAST */}
-        {toast ? (
-          <div
-            style={{
-              ...styles.toast,
-              borderColor:
-                toast.type === "ok"
-                  ? "rgba(34,197,94,0.35)"
-                  : "rgba(239,68,68,0.35)",
-              background:
-                toast.type === "ok"
-                  ? "rgba(34,197,94,0.10)"
-                  : "rgba(239,68,68,0.10)",
-            }}
-          >
-            {toast.text}
+        {/* Footer */}
+        <footer className="nx-footer">
+          <div className="nx-footer-small">© {new Date().getFullYear()} Nexio.gg</div>
+          <div className="nx-footer-links">
+            <a href="/" className="nx-link">
+              Home
+            </a>
+            <span className="nx-dot">•</span>
+            <a href="/terms" className="nx-link">
+              Terms
+            </a>
+            <span className="nx-dot">•</span>
+            <a href="/privacy" className="nx-link">
+              Privacy
+            </a>
           </div>
-        ) : null}
+        </footer>
       </div>
+
+      {/* Toast */}
+      {toast ? (
+        <div className="nx-toast" key={toast.ts}>
+          {toast.text}
+        </div>
+      ) : null}
+
+      {/* Styles */}
+      <style jsx>{`
+        .nx-page {
+          min-height: 100vh;
+          background:
+            radial-gradient(1200px 600px at 20% 10%, rgba(124,58,237,0.22), transparent 60%),
+            radial-gradient(900px 500px at 80% 20%, rgba(59,130,246,0.18), transparent 55%),
+            #0b1020;
+          color: #e8eefc;
+        }
+        .nx-container {
+          max-width: 1100px;
+          margin: 0 auto;
+          padding: 42px 20px 28px;
+        }
+
+        .nx-hero { margin-bottom: 18px; }
+        .nx-hero-row { display: flex; align-items: center; gap: 12px; }
+        .nx-badge {
+          display: inline-block;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.08);
+          border: 1px solid rgba(255,255,255,0.12);
+          font-size: 12px;
+          letter-spacing: 1px;
+          font-weight: 900;
+        }
+        .nx-hero-meta { color: rgba(232,238,252,0.7); font-size: 12px; }
+
+        .nx-h1 { margin: 12px 0 8px; font-size: 44px; line-height: 1.06; }
+        .nx-grad {
+          background: linear-gradient(90deg, rgba(124,58,237,1), rgba(59,130,246,1), rgba(34,211,238,1));
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        .nx-p { margin: 0; color: rgba(232,238,252,0.78); max-width: 760px; }
+
+        .nx-card {
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(255,255,255,0.04);
+          box-shadow: 0 20px 80px rgba(0,0,0,0.35);
+          backdrop-filter: blur(10px);
+        }
+        .nx-panel { padding: 20px; }
+
+        .nx-form {
+          display: grid;
+          grid-template-columns: 1fr 220px 260px;
+          gap: 12px;
+          align-items: end;
+        }
+        .nx-field { min-width: 240px; }
+        .nx-actions { min-width: 220px; }
+        .nx-label {
+          display: block;
+          font-size: 12px;
+          color: rgba(232,238,252,0.75);
+          margin-bottom: 6px;
+        }
+        .nx-input, .nx-select {
+          width: 100%;
+          box-sizing: border-box;
+          height: 44px;
+          padding: 12px 14px;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(0,0,0,0.25);
+          color: #e8eefc;
+          outline: none;
+        }
+
+        .nx-actions-row {
+          display: grid;
+          grid-template-columns: 1fr 110px;
+          gap: 10px;
+        }
+        .nx-btn {
+          width: 100%;
+          height: 44px;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.18);
+          background: linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85));
+          color: #fff;
+          font-weight: 950;
+          cursor: pointer;
+        }
+        .nx-btn:disabled { opacity: 0.75; cursor: not-allowed; }
+        .nx-btn-ghost {
+          width: 100%;
+          height: 44px;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(0,0,0,0.20);
+          color: rgba(232,238,252,0.86);
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .nx-samples {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          align-items: center;
+          margin-top: 10px;
+        }
+        .nx-samples-label {
+          display: inline-flex;
+          gap: 8px;
+          align-items: center;
+          color: rgba(232,238,252,0.72);
+          font-size: 12px;
+          font-weight: 800;
+        }
+
+        .nx-alert {
+          margin-top: 14px;
+          padding: 12px 14px;
+          border-radius: 12px;
+          border: 1px solid rgba(239,68,68,0.35);
+          background: rgba(239,68,68,0.10);
+          color: #ffd7d7;
+        }
+
+        .nx-result-head {
+          margin-top: 18px;
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 12px;
+          padding-top: 14px;
+          border-top: 1px solid rgba(255,255,255,0.10);
+          flex-wrap: wrap;
+        }
+        .nx-section-title { font-weight: 950; font-size: 13px; }
+        .nx-section-sub { margin-top: 6px; color: rgba(232,238,252,0.65); font-size: 12px; }
+        .nx-result-meta { margin-top: 8px; color: rgba(232,238,252,0.70); font-size: 12px; }
+        .nx-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .nx-dot { margin: 0 8px; opacity: 0.6; }
+
+        .nx-result-right { display: flex; align-items: center; gap: 10px; }
+        .nx-copy {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(0,0,0,0.25);
+          color: #e8eefc;
+          font-weight: 950;
+          cursor: pointer;
+        }
+        .nx-pills { display: flex; gap: 8px; align-items: center; }
+        .nx-pill {
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(255,255,255,0.06);
+          font-size: 12px;
+          font-weight: 950;
+        }
+        .nx-pill-low { border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.10); }
+        .nx-pill-med { border-color: rgba(59,130,246,0.35); background: rgba(59,130,246,0.10); }
+        .nx-pill-high { border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.10); }
+        .nx-pill-empty { opacity: 0.8; }
+
+        /* ✅ NEW overview */
+        .nx-overview {
+          margin-top: 12px;
+          padding: 12px 14px;
+          border-radius: 16px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.18);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .nx-overview-title {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          font-weight: 950;
+          font-size: 12px;
+          color: rgba(232,238,252,0.86);
+        }
+        .nx-overview-items {
+          margin-top: 6px;
+          color: rgba(232,238,252,0.72);
+          font-size: 12px;
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+        }
+        .nx-ov-item { white-space: nowrap; }
+        .nx-overview-sub {
+          margin-top: 6px;
+          font-size: 12px;
+          color: rgba(232,238,252,0.62);
+        }
+
+        .nx-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+          gap: 12px;
+          margin-top: 14px;
+        }
+
+        .nx-stat {
+          padding: 14px;
+          min-height: 120px;
+          transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+        }
+        .nx-stat:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 24px 90px rgba(0,0,0,0.45);
+          border-color: rgba(255,255,255,0.16);
+        }
+        .nx-stat-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+        }
+        .nx-stat-title {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 12px;
+          color: rgba(232,238,252,0.72);
+          font-weight: 900;
+        }
+        .nx-icon { opacity: 0.9; }
+
+        .nx-chip-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(0,0,0,0.22);
+          color: rgba(232,238,252,0.9);
+          font-weight: 900;
+          cursor: pointer;
+          line-height: 1;
+          font-size: 12px;
+        }
+        .nx-chip-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+        .nx-chip-muted {
+          padding: 8px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(255,255,255,0.05);
+          color: rgba(232,238,252,0.55);
+          font-weight: 900;
+          font-size: 12px;
+        }
+
+        .nx-stat-value { font-size: 26px; font-weight: 950; margin-top: 10px; }
+        .nx-stat-sub { margin-top: 8px; font-size: 12px; color: rgba(232,238,252,0.62); }
+
+        .nx-note {
+          margin-top: 12px;
+          padding: 12px 14px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.18);
+          color: rgba(232,238,252,0.75);
+          font-size: 12px;
+        }
+
+        .nx-empty {
+          padding: 14px;
+          border: 1px dashed rgba(255,255,255,0.18);
+          background: rgba(255,255,255,0.02);
+        }
+        .nx-empty-title { font-weight: 950; margin-bottom: 6px; }
+        .nx-empty-sub { color: rgba(232,238,252,0.65); font-size: 12px; }
+
+        .nx-champ { padding: 14px; }
+        .nx-champ-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .nx-champ-left { display: flex; align-items: center; gap: 12px; }
+        .nx-champ-avatar {
+          width: 44px; height: 44px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 950;
+          background: linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85));
+          border: 1px solid rgba(255,255,255,0.14);
+        }
+        .nx-champ-name { font-weight: 950; font-size: 16px; }
+        .nx-champ-sub { font-size: 12px; color: rgba(232,238,252,0.65); margin-top: 4px; }
+
+        .nx-chip {
+          padding: 8px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(255,255,255,0.06);
+          color: rgba(232,238,252,0.86);
+          font-size: 12px;
+          font-weight: 900;
+        }
+        .nx-champ-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 12px;
+        }
+        .nx-mini {
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.18);
+          padding: 12px;
+        }
+        .nx-mini-label { font-size: 12px; color: rgba(232,238,252,0.65); }
+        .nx-mini-value { margin-top: 8px; font-weight: 950; font-size: 18px; }
+
+        .nx-role { padding: 14px; }
+        .nx-role-row {
+          display: grid;
+          grid-template-columns: 180px 1fr;
+          gap: 12px;
+          align-items: center;
+          padding: 10px 0;
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .nx-role-last { border-bottom: none; }
+        .nx-role-name { font-weight: 950; font-size: 12px; letter-spacing: 0.4px; }
+        .nx-role-meta { margin-top: 6px; font-size: 12px; color: rgba(232,238,252,0.65); }
+        .nx-role-track {
+          height: 12px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.08);
+          overflow: hidden;
+        }
+        .nx-role-fill {
+          height: 100%;
+          border-radius: 999px;
+          background: linear-gradient(90deg, rgba(124,58,237,0.95), rgba(59,130,246,0.9), rgba(34,211,238,0.85));
+        }
+
+        .nx-policy { padding: 16px; background: rgba(0,0,0,0.20); }
+        .nx-policy-text { margin-top: 8px; color: rgba(232,238,252,0.72); font-size: 12px; line-height: 1.55; }
+        .nx-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+
+        .nx-section { margin-top: 18px; }
+
+        .nx-footer {
+          margin-top: 18px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          color: rgba(232,238,252,0.65);
+          font-size: 12px;
+        }
+        .nx-footer-small { opacity: 0.9; }
+        .nx-footer-links { display: flex; align-items: center; gap: 10px; }
+        .nx-link { color: rgba(232,238,252,0.80); text-decoration: none; }
+
+        .nx-skel-value {
+          margin-top: 12px;
+          height: 28px;
+          width: 56%;
+          border-radius: 10px;
+          background: rgba(255,255,255,0.08);
+          animation: nxPulse 1.2s ease-in-out infinite;
+        }
+        .nx-skel-sub {
+          margin-top: 10px;
+          height: 12px;
+          width: 72%;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.06);
+          animation: nxPulse 1.2s ease-in-out infinite;
+        }
+        .nx-skel-pill {
+          height: 28px;
+          width: 88px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.06);
+          animation: nxPulse 1.2s ease-in-out infinite;
+        }
+        @keyframes nxPulse {
+          0% { opacity: 0.55; }
+          50% { opacity: 1; }
+          100% { opacity: 0.55; }
+        }
+
+        .nx-toast {
+          position: fixed;
+          right: 18px;
+          bottom: 18px;
+          padding: 12px 14px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(0,0,0,0.55);
+          color: rgba(232,238,252,0.92);
+          font-weight: 900;
+          box-shadow: 0 20px 70px rgba(0,0,0,0.45);
+          backdrop-filter: blur(10px);
+          z-index: 9999;
+        }
+
+        @media (max-width: 900px) {
+          .nx-form { grid-template-columns: 1fr; }
+          .nx-actions-row { grid-template-columns: 1fr; }
+          .nx-role-row { grid-template-columns: 1fr; }
+        }
+      `}</style>
     </main>
   );
 }
-
-/* -------------------- STYLES -------------------- */
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background:
-      "radial-gradient(1200px 600px at 20% 10%, rgba(124,58,237,0.22), transparent 60%), radial-gradient(900px 500px at 80% 20%, rgba(59,130,246,0.16), transparent 55%), #0b1020",
-    color: "#e8eefc",
-  },
-  container: {
-    maxWidth: 1040,
-    margin: "0 auto",
-    padding: "54px 18px 42px",
-  },
-
-  hero: {
-    marginBottom: 18,
-  },
-  heroBadgeRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  badge: {
-    display: "inline-block",
-    padding: "6px 10px",
-    borderRadius: 999,
-    background: "rgba(255,255,255,0.08)",
-    border: "1px solid rgba(255,255,255,0.12)",
-    fontSize: 12,
-    letterSpacing: 1,
-    fontWeight: 900,
-  },
-  badgeChips: { display: "flex", gap: 10, flexWrap: "wrap" },
-  chip: {
-    padding: "6px 10px",
-    borderRadius: 999,
-    background: "rgba(0,0,0,0.25)",
-    border: "1px solid rgba(255,255,255,0.10)",
-    fontSize: 12,
-    color: "rgba(232,238,252,0.85)",
-  },
-  h1: {
-    margin: "12px 0 8px",
-    fontSize: 44,
-    lineHeight: 1.06,
-    letterSpacing: -0.4,
-  },
-  gradText: {
-    background:
-      "linear-gradient(90deg, rgba(124,58,237,1), rgba(59,130,246,1))",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
-  },
-  heroP: {
-    margin: 0,
-    color: "rgba(232,238,252,0.78)",
-    maxWidth: 820,
-    lineHeight: 1.6,
-  },
-
-  presetRow: {
-    marginTop: 14,
-    display: "flex",
-    gap: 12,
-    alignItems: "center",
-    flexWrap: "wrap",
-  },
-  presetLabel: { fontSize: 12, color: "rgba(232,238,252,0.75)", fontWeight: 800 },
-  presetWrap: { display: "flex", gap: 10, flexWrap: "wrap" },
-  presetBtn: {
-    padding: "8px 10px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.04)",
-    color: "rgba(232,238,252,0.9)",
-    fontSize: 12,
-    cursor: "pointer",
-  },
-
-  card: {
-    marginTop: 18,
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.10)",
-    borderRadius: 18,
-    padding: 18,
-    boxShadow: "0 20px 80px rgba(0,0,0,0.35)",
-    backdropFilter: "blur(10px)",
-  },
-
-  formRow: {
-    display: "flex",
-    gap: 12,
-    flexWrap: "wrap",
-    alignItems: "flex-end",
-  },
-  field: { flex: "1 1 360px", minWidth: 240 },
-  fieldSmall: { flex: "0 0 200px", minWidth: 170 },
-  btnCol: { flex: "0 0 160px", minWidth: 150 },
-  label: {
-    display: "block",
-    fontSize: 12,
-    color: "rgba(232,238,252,0.75)",
-    marginBottom: 6,
-    fontWeight: 800,
-  },
-  input: {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(0,0,0,0.25)",
-    color: "#e8eefc",
-    outline: "none",
-  },
-  select: {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(0,0,0,0.25)",
-    color: "#e8eefc",
-    outline: "none",
-  },
-  primaryBtn: {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background:
-      "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.86))",
-    color: "#fff",
-    fontWeight: 900,
-  },
-  secondaryBtn: {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.04)",
-    color: "rgba(232,238,252,0.92)",
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-
-  alertError: {
-    marginTop: 14,
-    padding: "12px 14px",
-    borderRadius: 12,
-    border: "1px solid rgba(239,68,68,0.35)",
-    background: "rgba(239,68,68,0.10)",
-    color: "#ffd7d7",
-  },
-
-  resultHead: {
-    marginTop: 16,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingTop: 14,
-    borderTop: "1px solid rgba(255,255,255,0.10)",
-    flexWrap: "wrap",
-  },
-  resultTitle: { fontWeight: 1000, fontSize: 14 },
-  resultMeta: { marginTop: 6, color: "rgba(232,238,252,0.75)", fontSize: 12 },
-  dot: { margin: "0 8px", opacity: 0.6 },
-  copyBtn: {
-    padding: "10px 12px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(0,0,0,0.25)",
-    color: "rgba(232,238,252,0.9)",
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-    gap: 12,
-    marginTop: 14,
-  },
-
-  statCard: {
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.03)",
-    padding: 14,
-    minHeight: 110,
-  },
-  statTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  statTitle: { fontSize: 12, color: "rgba(232,238,252,0.72)", fontWeight: 900 },
-  shareBtn: {
-    padding: "6px 10px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.22)",
-    color: "rgba(232,238,252,0.85)",
-    fontSize: 12,
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-  statValue: { fontSize: 28, fontWeight: 1000, marginTop: 10 },
-  statSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.65)" },
-
-  note: {
-    marginTop: 14,
-    padding: "12px 14px",
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.22)",
-    color: "rgba(232,238,252,0.82)",
-    fontSize: 12,
-    lineHeight: 1.55,
-  },
-
-  sectionBox: {
-    marginTop: 14,
-    padding: 14,
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.02)",
-  },
-  sectionHead: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-  sectionTitle: { fontWeight: 1000, fontSize: 13 },
-  sectionHint: { marginTop: 6, color: "rgba(232,238,252,0.65)", fontSize: 12 },
-
-  emptyBox: {
-    marginTop: 12,
-    padding: "14px 14px",
-    borderRadius: 14,
-    border: "1px dashed rgba(255,255,255,0.14)",
-    background: "rgba(255,255,255,0.02)",
-    color: "rgba(232,238,252,0.78)",
-  },
-
-  roleRow: {
-    display: "grid",
-    gridTemplateColumns: "160px 1fr",
-    gap: 14,
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  roleLeft: {},
-  roleName: { fontWeight: 1000 },
-  roleMeta: { marginTop: 4, fontSize: 12, color: "rgba(232,238,252,0.65)" },
-  roleBarWrap: {},
-  roleBarTrack: {
-    height: 10,
-    borderRadius: 999,
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.10)",
-    overflow: "hidden",
-  },
-  roleBarFill: {
-    height: "100%",
-    borderRadius: 999,
-    background:
-      "linear-gradient(90deg, rgba(124,58,237,0.95), rgba(34,211,238,0.92), rgba(59,130,246,0.92))",
-  },
-
-  champBox: {
-    marginTop: 12,
-    padding: 14,
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.20)",
-  },
-  champIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.10)",
-  },
-  champIconText: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    display: "grid",
-    placeItems: "center",
-    background:
-      "linear-gradient(135deg, rgba(124,58,237,0.50), rgba(59,130,246,0.30))",
-    border: "1px solid rgba(255,255,255,0.10)",
-    fontWeight: 1000,
-  },
-  pillBadge: {
-    padding: "6px 10px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(0,0,0,0.22)",
-    fontWeight: 1000,
-    fontSize: 12,
-  },
-  champGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: 12,
-    marginTop: 12,
-  },
-  champMini: {
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.02)",
-    padding: 12,
-  },
-  champMiniLabel: { fontSize: 12, color: "rgba(232,238,252,0.65)", fontWeight: 900 },
-  champMiniValue: { marginTop: 6, fontSize: 18, fontWeight: 1000 },
-
-  chipsWrap: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 },
-  chip2: {
-    padding: "8px 10px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.22)",
-    color: "rgba(232,238,252,0.88)",
-    fontSize: 12,
-    fontWeight: 900,
-  },
-
-  toast: {
-    position: "fixed",
-    right: 16,
-    bottom: 16,
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.12)",
-    color: "rgba(232,238,252,0.92)",
-    backdropFilter: "blur(10px)",
-    boxShadow: "0 18px 60px rgba(0,0,0,0.45)",
-  },
-};
