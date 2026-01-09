@@ -1,13 +1,5 @@
+// pages/analyzer.js
 import { useEffect, useMemo, useState } from "react";
-
-/**
- * =========================================================
- * CONFIG
- * =========================================================
- */
-const SUPABASE_PROJECT_REF = "lpoxlbbcmpxbfpfrufvf";
-const SUPABASE_FN_NAME = "get-player-insights"; // <- function adın farklıysa değiştir
-const SUPABASE_FN_URL = `https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/${SUPABASE_FN_NAME}`;
 
 const regions = [
   { value: "tr1", label: "TR (tr1)" },
@@ -16,47 +8,37 @@ const regions = [
   { value: "kr", label: "KR (kr)" },
 ];
 
+// ✅ Burayı kendi çalışan endpoint’inle aynı bırak / değiştir.
+// Örn: https://lpoxlbbcmpxbfpfrufvf.supabase.co/functions/v1/get-player-insights
+const SUPABASE_FN_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_FN_URL ||
+  "https://lpoxlbbcmpxbfpfrufvf.supabase.co/functions/v1/get-player-insights";
+
+// Quick presetler (istersen değiştir)
 const quickPresets = [
   { label: "faker • KR", name: "faker", region: "kr" },
   { label: "Doublelift • NA1", name: "Doublelift", region: "na1" },
   { label: "Caps • EUW1", name: "Caps", region: "euw1" },
 ];
 
-function safeDate(ts) {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return null;
-  return d;
+function formatDateTime(d) {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(d);
+  } catch {
+    return d.toISOString();
+  }
 }
 
-function buildShareUrl(name, region) {
-  const u = new URL(window.location.href);
-  u.pathname = "/analyzer";
-  u.search = "";
-  if (name) u.searchParams.set("name", name);
-  if (region) u.searchParams.set("region", region);
-  return u.toString();
-}
-
-function Icon({ children }) {
-  return (
-    <span
-      aria-hidden
-      style={{
-        width: 26,
-        height: 26,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        borderRadius: 10,
-        background: "rgba(255,255,255,0.06)",
-        border: "1px solid rgba(255,255,255,0.10)",
-        color: "rgba(232,238,252,0.92)",
-        fontSize: 14,
-      }}
-    >
-      {children}
-    </span>
-  );
+function clampPct(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(100, x));
 }
 
 function StatCard({ title, value, sub, onShare }) {
@@ -65,33 +47,42 @@ function StatCard({ title, value, sub, onShare }) {
       <div style={styles.statTop}>
         <div style={styles.statTitle}>{title}</div>
         {onShare ? (
-          <button onClick={onShare} style={styles.shareMiniBtn} title="Share this card">
-            <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-              <Icon>↗</Icon>
-              <span style={{ fontWeight: 800 }}>Share</span>
-            </span>
+          <button type="button" onClick={onShare} style={styles.shareBtn}>
+            ↗ <span style={{ marginLeft: 6 }}>Share</span>
           </button>
         ) : null}
       </div>
       <div style={styles.statValue}>{value}</div>
-      <div style={styles.statSub}>{sub}</div>
+      {sub ? <div style={styles.statSub}>{sub}</div> : null}
     </div>
   );
 }
 
-function ProgressRow({ label, count, pct }) {
-  const p = Math.max(0, Math.min(100, Number(pct ?? 0)));
+function RoleBars({ roles }) {
+  if (!roles?.length) {
+    return <div style={styles.emptyBox}>No role data yet.</div>;
+  }
+
+  const sorted = [...roles].sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
+
   return (
-    <div style={styles.roleRow}>
-      <div style={styles.roleLeft}>
-        <div style={styles.roleName}>{label}</div>
-        <div style={styles.roleMeta}>
-          {count ?? 0} match • {p}%
-        </div>
-      </div>
-      <div style={styles.roleBar}>
-        <div style={{ ...styles.roleFill, width: `${p}%` }} />
-      </div>
+    <div style={{ display: "grid", gap: 12 }}>
+      {sorted.map((r) => {
+        const pct = clampPct(r.pct);
+        return (
+          <div key={r.role} style={styles.roleRow}>
+            <div style={styles.roleLeft}>
+              <div style={styles.roleName}>{r.role}</div>
+              <div style={styles.roleMeta}>
+                {r.count ?? 0} match • {pct}%
+              </div>
+            </div>
+            <div style={styles.roleBarOuter}>
+              <div style={{ ...styles.roleBarInner, width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -99,24 +90,21 @@ function ProgressRow({ label, count, pct }) {
 export default function Analyzer() {
   const [name, setName] = useState("");
   const [region, setRegion] = useState("tr1");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [raw, setRaw] = useState(null);
 
-  // URL -> state (on load)
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [raw, setRaw] = useState(null);
+  const [updatedAt, setUpdatedAt] = useState(null);
+
+  // URL -> state (shareable link)
   useEffect(() => {
-    try {
-      const u = new URL(window.location.href);
-      const n = u.searchParams.get("name") || "";
-      const r = u.searchParams.get("region") || "tr1";
-      if (n) setName(n);
-      if (r) setRegion(r);
-      // Auto-run if name exists
-      if (n) {
-        setTimeout(() => run(n, r, { updateUrl: false }), 50);
-      }
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const qName = url.searchParams.get("name");
+    const qRegion = url.searchParams.get("region");
+    if (qName) setName(qName);
+    if (qRegion) setRegion(qRegion);
   }, []);
 
   const parsed = useMemo(() => {
@@ -127,20 +115,12 @@ export default function Analyzer() {
 
     const last10 = insights.kda_trend?.last_10 ?? null;
     const best = insights.best_champion ?? null;
-    const roles = Array.isArray(insights.role_distribution)
-      ? insights.role_distribution
-      : [];
-
-    const updatedAt =
-      raw.updated_at || raw.updatedAt || raw.ts || raw.timestamp || null;
+    const roles = insights.role_distribution ?? [];
 
     return {
-      ok: !!raw.ok,
-      source: raw.source || "LIVE",
-      puuid: raw.puuid || null,
-      updatedAt: updatedAt ? safeDate(updatedAt) : null,
-      name: raw.debug?.name || raw.name || null,
-      region: raw.debug?.region || raw.region || null,
+      ok: raw.ok ?? true,
+      source: raw.source ?? "LIVE",
+      puuid: raw.puuid ?? null,
 
       sampleSize,
       last10,
@@ -149,138 +129,157 @@ export default function Analyzer() {
     };
   }, [raw]);
 
-  const run = async (nOverride, rOverride, opts = { updateUrl: true }) => {
-    const n = (nOverride ?? name).trim();
-    const r = (rOverride ?? region).trim() || "tr1";
+  const buildResultLink = (n = name, r = region) => {
+    if (typeof window === "undefined") return "";
+    const u = new URL(window.location.href);
+    u.pathname = "/analyzer";
+    u.searchParams.set("name", (n || "").trim());
+    u.searchParams.set("region", r || "tr1");
+    // focus param opsiyonel
+    u.searchParams.delete("focus");
+    return u.toString();
+  };
 
-    setError("");
+  const buildCardLink = (focusKey) => {
+    if (typeof window === "undefined") return "";
+    const u = new URL(buildResultLink());
+    u.searchParams.set("focus", focusKey);
+    return u.toString();
+  };
+
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // fallback
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  };
+
+  const syncUrl = (n, r) => {
+    if (typeof window === "undefined") return;
+    const u = new URL(window.location.href);
+    u.pathname = "/analyzer";
+    u.searchParams.set("name", (n || "").trim());
+    u.searchParams.set("region", r || "tr1");
+    u.searchParams.delete("focus");
+    window.history.replaceState({}, "", u.toString());
+  };
+
+  const run = async (nArg, rArg) => {
+    const n = (nArg ?? name).trim();
+    const r = rArg ?? region;
+
+    setError(null);
     setRaw(null);
 
     if (!n) {
-      setError("Summoner name gerekli.");
+      setError("Summoner name required.");
       return;
     }
 
     setLoading(true);
     try {
-      const url = `${SUPABASE_FN_URL}?name=${encodeURIComponent(n)}&region=${encodeURIComponent(
-        r
-      )}`;
+      const url = `${SUPABASE_FN_URL}?name=${encodeURIComponent(
+        n
+      )}&region=${encodeURIComponent(r)}`;
 
-      const res = await fetch(url, { method: "GET" });
-      const data = await res.json().catch(() => ({}));
+      const res = await fetch(url);
+      const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        throw new Error(data?.error || data?.message || "Request failed");
+        const msg =
+          data?.error ||
+          data?.message ||
+          `Request failed (${res.status})`;
+        throw new Error(msg);
       }
 
       setRaw(data);
-
-      // Update URL (shareable)
-      if (opts.updateUrl !== false) {
-        const u = new URL(window.location.href);
-        u.pathname = "/analyzer";
-        u.search = "";
-        u.searchParams.set("name", n);
-        u.searchParams.set("region", r);
-        window.history.replaceState({}, "", u.toString());
-      }
+      setUpdatedAt(new Date());
+      syncUrl(n, r);
     } catch (e) {
-      setError(e?.message ? `Request failed: ${e.message}` : "Request failed");
+      setError(e?.message || "Failed to fetch");
     } finally {
       setLoading(false);
     }
   };
 
   const reset = () => {
+    setError(null);
+    setRaw(null);
+    setUpdatedAt(null);
     setName("");
     setRegion("tr1");
-    setError("");
-    setRaw(null);
-    const u = new URL(window.location.href);
-    u.pathname = "/analyzer";
-    u.search = "";
-    window.history.replaceState({}, "", u.toString());
+
+    if (typeof window !== "undefined") {
+      const u = new URL(window.location.href);
+      u.pathname = "/analyzer";
+      u.searchParams.delete("name");
+      u.searchParams.delete("region");
+      u.searchParams.delete("focus");
+      window.history.replaceState({}, "", u.toString());
+    }
   };
 
   const onEnter = (e) => {
     if (e.key === "Enter") run();
   };
 
-  const copyResultLink = async () => {
-    const n = name.trim();
-    const r = region;
-    const link = buildShareUrl(n, r);
+  const focus = useMemo(() => {
+    if (typeof window === "undefined") return null;
     try {
-      await navigator.clipboard.writeText(link);
-      toast("Copied result link ✅");
+      const u = new URL(window.location.href);
+      return u.searchParams.get("focus");
     } catch {
-      toast("Copy failed (browser blocked) ❌");
+      return null;
     }
-  };
+  }, [raw, updatedAt, error, loading, name, region]);
 
-  const shareCard = async (cardKey) => {
-    const n = name.trim();
-    const r = region;
-    const base = buildShareUrl(n, r);
-    const link = `${base}${base.includes("?") ? "&" : "?"}card=${encodeURIComponent(
-      cardKey
-    )}`;
-    try {
-      await navigator.clipboard.writeText(link);
-      toast("Copied card link ✅");
-    } catch {
-      toast("Copy failed ❌");
-    }
-  };
-
-  const [toastMsg, setToastMsg] = useState("");
-  const toast = (msg) => {
-    setToastMsg(msg);
-    setTimeout(() => setToastMsg(""), 1600);
-  };
-
-  const updatedLabel = useMemo(() => {
-    if (!parsed?.updatedAt) return "—";
-    return parsed.updatedAt.toLocaleString();
-  }, [parsed?.updatedAt]);
-
-  const sampleLine = useMemo(() => {
-    const n = name.trim() || "—";
-    const r = region || "—";
-    const s = parsed?.sampleSize != null ? parsed.sampleSize : "—";
-    return `Summoner: ${n}  •  Region: ${r}  •  Sample: ${s}`;
-  }, [name, region, parsed?.sampleSize]);
-
-  const hasBest = !!parsed?.best?.champion_name;
+  // Focus highlight (optional)
+  const cardGlow = (key) =>
+    focus === key
+      ? { boxShadow: "0 0 0 2px rgba(124,58,237,0.35), 0 20px 80px rgba(0,0,0,0.35)" }
+      : null;
 
   return (
     <main style={styles.page}>
       <div style={styles.container}>
+        {/* Header */}
         <header style={styles.hero}>
-          <div style={styles.kickerRow}>
-            <span style={styles.kicker}>ANALYZER</span>
-            <span style={styles.kickerDots}>•</span>
-            <span style={styles.kickerSub}>Post-match only</span>
-            <span style={styles.kickerDots}>•</span>
-            <span style={styles.kickerSub}>Policy-aware</span>
+          <div style={styles.badgeRow}>
+            <div style={styles.badge}>ANALYZER</div>
+            <div style={styles.badgeSoft}>Post-match only</div>
+            <div style={styles.badgeSoft}>Policy-aware</div>
           </div>
 
           <h1 style={styles.h1}>
             Performance insights for{" "}
-            <span style={styles.gradText}>esports</span>.
+            <span style={styles.gradWord}>esports</span>.
           </h1>
-          <p style={styles.sub}>
+
+          <p style={styles.lead}>
             Clean summaries based on recently available public match data.
             Shareable links included — built for clarity, designed to be policy-aware.
           </p>
         </header>
 
-        {/* MAIN CARD */}
-        <section style={styles.mainCard}>
+        {/* Main Card */}
+        <section style={styles.card}>
           {/* Form */}
           <div style={styles.formGrid}>
-            <div style={styles.fieldWide}>
+            <div style={styles.field}>
               <label style={styles.label}>Summoner name</label>
               <input
                 value={name}
@@ -290,29 +289,6 @@ export default function Analyzer() {
                 autoComplete="off"
                 style={styles.input}
               />
-
-              <div style={styles.quickRow}>
-                <div style={styles.quickLeft}>
-                  <span style={styles.quickIcon}>⚡</span>
-                  <span style={styles.quickLabel}>Quick</span>
-                </div>
-                <div style={styles.quickChips}>
-                  {quickPresets.map((p) => (
-                    <button
-                      key={p.label}
-                      style={styles.chipBtn}
-                      onClick={() => {
-                        setName(p.name);
-                        setRegion(p.region);
-                        run(p.name, p.region);
-                      }}
-                      type="button"
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
 
             <div style={styles.field}>
@@ -351,182 +327,223 @@ export default function Analyzer() {
                 Reset
               </button>
             </div>
+
+            {/* ✅ Quick row full width (fixed layout) */}
+            <div style={styles.quickRowFull}>
+              <div style={styles.quickLeft}>
+                <span style={styles.quickIcon}>⚡</span>
+                <span style={styles.quickLabel}>Quick</span>
+              </div>
+              <div style={styles.quickChips}>
+                {quickPresets.map((p) => (
+                  <button
+                    key={p.label}
+                    style={styles.chipBtn}
+                    onClick={() => {
+                      setName(p.name);
+                      setRegion(p.region);
+                      run(p.name, p.region);
+                    }}
+                    type="button"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {error ? (
             <div style={styles.alertError}>
-              <strong>{error}</strong>
+              <strong>Request failed:</strong> {error}
             </div>
           ) : null}
 
-          {/* Result header row */}
-          <div style={styles.resultHead}>
+          {/* Result header */}
+          <div style={styles.resultHeader}>
             <div>
               <div style={styles.sectionTitle}>Result</div>
-              <div style={styles.resultMeta}>
-                Last updated: <span style={styles.mono}>{updatedLabel}</span>
-                <span style={styles.dot}>•</span>
-                Source: <span style={styles.mono}>{parsed?.source || "—"}</span>
-              </div>
-              <div style={styles.helperSmall}>
+              <div style={styles.resultSub}>
                 Run an analysis to see results. You can share result links and card links.
+              </div>
+              <div style={styles.resultMetaLine}>
+                <span style={styles.metaItem}>
+                  Last updated:{" "}
+                  <span style={styles.mono}>
+                    {updatedAt ? formatDateTime(updatedAt) : "—"}
+                  </span>
+                </span>
+                <span style={styles.dot}>•</span>
+                <span style={styles.metaItem}>
+                  Source:{" "}
+                  <span style={styles.mono}>
+                    {parsed?.source ? parsed.source : "—"}
+                  </span>
+                </span>
               </div>
             </div>
 
-            <div style={styles.resultActions}>
-              <button onClick={copyResultLink} style={styles.copyBtn}>
-                <span style={{ display: "inline-flex", gap: 10, alignItems: "center" }}>
-                  <Icon>⧉</Icon>
-                  <span style={{ fontWeight: 900 }}>Copy result link</span>
-                </span>
+            <div style={styles.resultRight}>
+              <button
+                type="button"
+                style={styles.copyBtn}
+                onClick={async () => {
+                  const ok = await copyToClipboard(buildResultLink());
+                  if (!ok) alert("Copy failed.");
+                }}
+                disabled={!name.trim()}
+                title={!name.trim() ? "Enter a summoner name first" : "Copy link"}
+              >
+                ⧉ Copy result link
               </button>
             </div>
           </div>
 
-          {/* What we analyzed */}
-          <div style={styles.analyzedCard}>
-            <div style={styles.analyzedTop}>
-              <div style={styles.analyzedTitleRow}>
-                <Icon>ⓘ</Icon>
-                <div style={styles.analyzedTitle}>What we analyzed</div>
-              </div>
-              <div style={styles.analyzedCollapseHint}>
-                {/* placeholder for future collapse */}
-              </div>
+          {/* Cards */}
+          <div style={styles.grid}>
+            <div style={cardGlow("sample")}>
+              <StatCard
+                title="Sample size"
+                value={parsed?.sampleSize ?? "—"}
+                sub="Analyzed matches (recent)"
+                onShare={
+                  name.trim()
+                    ? async () => {
+                        const ok = await copyToClipboard(buildCardLink("sample"));
+                        if (!ok) alert("Copy failed.");
+                      }
+                    : null
+                }
+              />
             </div>
-            <div style={styles.analyzedLine}>{sampleLine}</div>
-            <div style={styles.analyzedHint}>Run to analyze recent matches.</div>
+
+            <div style={cardGlow("kda")}>
+              <StatCard
+                title="Recent KDA"
+                value={parsed?.last10?.kda ?? "—"}
+                sub={
+                  parsed?.last10
+                    ? `${parsed.last10.games} game • ${parsed.last10.winrate_pct}% WR`
+                    : "Recent performance snapshot"
+                }
+                onShare={
+                  name.trim()
+                    ? async () => {
+                        const ok = await copyToClipboard(buildCardLink("kda"));
+                        if (!ok) alert("Copy failed.");
+                      }
+                    : null
+                }
+              />
+            </div>
+
+            <div style={cardGlow("id")}>
+              <StatCard
+                title="Player ID"
+                value={parsed?.puuid ? "Resolved" : "—"}
+                sub={parsed?.puuid ? "PUUID available" : "Identity resolution"}
+                onShare={
+                  name.trim()
+                    ? async () => {
+                        const ok = await copyToClipboard(buildCardLink("id"));
+                        if (!ok) alert("Copy failed.");
+                      }
+                    : null
+                }
+              />
+            </div>
           </div>
 
-          {/* Main stat grid */}
-          <div style={styles.statsGrid}>
-            <StatCard
-              title="Sample size"
-              value={parsed?.sampleSize ?? "—"}
-              sub="Analyzed matches (recent)"
-              onShare={() => shareCard("sample")}
-            />
-            <StatCard
-              title="Recent KDA"
-              value={
-                parsed?.last10?.kda != null
-                  ? Number(parsed.last10.kda).toFixed(2)
-                  : "—"
-              }
-              sub={
-                parsed?.last10
-                  ? `${parsed.last10.games} game • ${parsed.last10.winrate_pct}% WR`
-                  : "Recent performance snapshot"
-              }
-              onShare={() => shareCard("kda")}
-            />
-            <StatCard
-              title="Player ID"
-              value={parsed?.puuid ? "Resolved" : "—"}
-              sub={parsed?.puuid ? "PUUID available" : "Identity resolution"}
-              onShare={() => shareCard("player")}
-            />
-          </div>
-
-          <div style={styles.noteBar}>
+          {/* Note box */}
+          <div style={styles.noteBox}>
             <strong>Note:</strong> This is post-match analytics only. Nexio.gg provides no real-time assistance,
-            automation, or gameplay modification.
+            automation, scripting, or gameplay modification.
           </div>
 
           {/* Best champion */}
-          <div style={styles.block}>
-            <div style={styles.blockHead}>
-              <div>
-                <div style={styles.sectionTitle}>Best champion breakdown</div>
-                <div style={styles.sectionSub}>A compact breakdown from the recent sample.</div>
-              </div>
-              {hasBest ? <span style={styles.readyPill}>READY</span> : null}
+          <div style={{ marginTop: 18 }}>
+            <div style={styles.sectionTitle}>Best champion breakdown</div>
+            <div style={styles.sectionSub}>
+              A compact breakdown from the recent sample.
             </div>
 
-            {hasBest ? (
-              <div style={styles.bestCard}>
+            {parsed?.best ? (
+              <div style={styles.bestBox}>
                 <div style={styles.bestTop}>
-                  <div style={styles.bestLeft}>
-                    <div style={styles.bestAvatar}>
-                      {parsed.best.champion_name?.slice(0, 1)?.toUpperCase() || "C"}
-                    </div>
-                    <div>
-                      <div style={styles.bestName}>{parsed.best.champion_name}</div>
-                      <div style={styles.bestSub}>Best champion (recent)</div>
-                    </div>
+                  <div style={styles.bestIcon}>
+                    {String(parsed.best.champion_name || "C").slice(0, 1).toUpperCase()}
                   </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={styles.bestName}>{parsed.best.champion_name}</div>
+                    <div style={styles.bestSub}>Best champion (recent)</div>
+                  </div>
+                  <div style={styles.readyPill}>READY</div>
                 </div>
 
                 <div style={styles.bestGrid}>
-                  <div style={styles.bestMini}>
-                    <div style={styles.bestMiniLabel}>Games</div>
-                    <div style={styles.bestMiniValue}>{parsed.best.games ?? "—"}</div>
+                  <div style={styles.bestStat}>
+                    <div style={styles.bestLabel}>Games</div>
+                    <div style={styles.bestValue}>{parsed.best.games ?? "—"}</div>
                   </div>
-                  <div style={styles.bestMini}>
-                    <div style={styles.bestMiniLabel}>Avg KDA</div>
-                    <div style={styles.bestMiniValue}>{parsed.best.avg_kda ?? "—"}</div>
+                  <div style={styles.bestStat}>
+                    <div style={styles.bestLabel}>Avg KDA</div>
+                    <div style={styles.bestValue}>{parsed.best.avg_kda ?? "—"}</div>
                   </div>
                 </div>
               </div>
             ) : (
               <div style={styles.emptyBox}>
-                <div style={styles.emptyTitle}>Not enough data yet</div>
-                <div style={styles.emptySub}>
-                  Best champion breakdown will appear after more recent matches are available.
-                </div>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Not enough data yet</div>
+                Best champion breakdown will appear after more recent matches are available.
               </div>
             )}
           </div>
 
           {/* Roles */}
-          <div style={styles.block}>
-            <div style={styles.blockHead}>
-              <div>
-                <div style={styles.sectionTitle}>Role distribution</div>
-                <div style={styles.sectionSub}>Based on recent matches — mini bar chart.</div>
-              </div>
+          <div style={{ marginTop: 18 }}>
+            <div style={styles.sectionTitle}>Role distribution</div>
+            <div style={styles.sectionSub}>Based on recent matches — mini bar chart.</div>
+            <div style={{ marginTop: 10 }}>
+              <RoleBars roles={parsed?.roles} />
             </div>
-
-            {parsed?.roles?.length ? (
-              <div style={styles.rolesCard}>
-                {parsed.roles.map((r) => (
-                  <ProgressRow
-                    key={r.role}
-                    label={r.role}
-                    count={r.count}
-                    pct={r.pct}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div style={styles.emptyBox}>
-                <div style={styles.emptyTitle}>No role data yet.</div>
-                <div style={styles.emptySub}>
-                  Run an analysis to see role distribution based on recent matches.
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Policy */}
-          <div style={styles.policyCard}>
-            <div style={styles.sectionTitle}>Policy & disclaimer</div>
-            <div style={styles.policySub}>
-              Nexio.gg is not affiliated with, endorsed, sponsored, or approved by Riot Games.
-            </div>
-            <div style={styles.pills}>
-              <span style={styles.pill}>Post-match only</span>
-              <span style={styles.pill}>No real-time assistance</span>
-              <span style={styles.pill}>No automation / scripting</span>
-              <span style={styles.pill}>No betting / gambling</span>
-              <span style={styles.pill}>No gameplay modification</span>
-              <span style={styles.pill}>No competitive advantage</span>
+          <div style={{ marginTop: 18 }}>
+            <div style={styles.policyBox}>
+              <div style={styles.sectionTitle}>Policy & disclaimer</div>
+              <div style={styles.sectionSub}>
+                Nexio.gg is not affiliated with, endorsed, sponsored, or approved by Riot Games.
+              </div>
+              <div style={styles.policyChips}>
+                {[
+                  "Post-match only",
+                  "No real-time assistance",
+                  "No automation / scripting",
+                  "No betting / gambling",
+                  "No gameplay modification",
+                  "No competitive advantage",
+                ].map((t) => (
+                  <span key={t} style={styles.policyChip}>
+                    {t}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Toast */}
-        {toastMsg ? <div style={styles.toast}>{toastMsg}</div> : null}
+        {/* Footer */}
+        <footer style={styles.footer}>
+          <div style={styles.footerSmall}>© 2026 Nexio.gg</div>
+          <div style={styles.footerLinks}>
+            <a href="/" style={styles.footerLink}>Home</a>
+            <span style={styles.dot}>•</span>
+            <a href="/terms" style={styles.footerLink}>Terms</a>
+            <span style={styles.dot}>•</span>
+            <a href="/privacy" style={styles.footerLink}>Privacy</a>
+          </div>
+        </footer>
       </div>
     </main>
   );
@@ -536,77 +553,73 @@ const styles = {
   page: {
     minHeight: "100vh",
     background:
-      "radial-gradient(1200px 700px at 15% 10%, rgba(124,58,237,0.28), transparent 58%), radial-gradient(900px 600px at 80% 20%, rgba(59,130,246,0.20), transparent 55%), #070b16",
+      "radial-gradient(1200px 600px at 15% 12%, rgba(124,58,237,0.22), transparent 60%), radial-gradient(900px 500px at 85% 18%, rgba(59,130,246,0.18), transparent 55%), #070b18",
     color: "#e8eefc",
   },
   container: {
-    maxWidth: 1020,
+    maxWidth: 1040,
     margin: "0 auto",
-    padding: "34px 18px 52px",
+    padding: "42px 20px 26px",
   },
 
-  hero: {
-    marginBottom: 18,
-    padding: "10px 6px 4px",
-  },
-  kickerRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    color: "rgba(232,238,252,0.72)",
-    fontSize: 12,
-    letterSpacing: 0.6,
-  },
-  kicker: {
-    display: "inline-flex",
-    alignItems: "center",
+  hero: { marginBottom: 16 },
+  badgeRow: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
+  badge: {
+    display: "inline-block",
     padding: "6px 10px",
     borderRadius: 999,
-    background: "rgba(255,255,255,0.06)",
+    background: "rgba(255,255,255,0.08)",
     border: "1px solid rgba(255,255,255,0.12)",
-    fontWeight: 900,
+    fontSize: 12,
+    letterSpacing: 1,
+    fontWeight: 800,
   },
-  kickerDots: { opacity: 0.45 },
-  kickerSub: { opacity: 0.85 },
-
+  badgeSoft: {
+    display: "inline-block",
+    padding: "6px 10px",
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.10)",
+    fontSize: 12,
+    color: "rgba(232,238,252,0.75)",
+  },
   h1: {
-    margin: "12px 0 8px",
-    fontSize: 46,
-    lineHeight: 1.05,
+    margin: "14px 0 10px",
+    fontSize: 44,
+    lineHeight: 1.08,
     letterSpacing: -0.6,
+    fontFamily: "ui-serif, Georgia, serif",
   },
-  gradText: {
+  gradWord: {
     background:
-      "linear-gradient(90deg, rgba(168,85,247,1), rgba(59,130,246,1))",
+      "linear-gradient(90deg, rgba(124,58,237,1), rgba(59,130,246,1))",
     WebkitBackgroundClip: "text",
-    backgroundClip: "text",
-    color: "transparent",
+    WebkitTextFillColor: "transparent",
   },
-  sub: {
+  lead: {
     margin: 0,
     maxWidth: 820,
-    color: "rgba(232,238,252,0.74)",
+    color: "rgba(232,238,252,0.72)",
     lineHeight: 1.6,
   },
 
-  mainCard: {
+  card: {
     marginTop: 18,
     background: "rgba(255,255,255,0.04)",
     border: "1px solid rgba(255,255,255,0.10)",
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 18,
-    boxShadow: "0 26px 90px rgba(0,0,0,0.45)",
+    boxShadow: "0 26px 90px rgba(0,0,0,0.40)",
     backdropFilter: "blur(10px)",
   },
 
-  // FORM GRID (fixes your layout problem)
+  // ✅ Fixed layout: quick row full width
   formGrid: {
     display: "grid",
-    gridTemplateColumns: "minmax(260px, 1fr) 220px 160px 140px",
+    gridTemplateColumns: "minmax(320px, 1fr) 260px 200px 180px",
     gap: 12,
     alignItems: "end",
   },
-  fieldWide: { minWidth: 0 },
   field: { minWidth: 0 },
   fieldBtn: { minWidth: 0 },
 
@@ -618,7 +631,7 @@ const styles = {
   },
   input: {
     width: "100%",
-    padding: "11px 12px",
+    padding: "12px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,0.25)",
@@ -627,7 +640,7 @@ const styles = {
   },
   select: {
     width: "100%",
-    padding: "11px 12px",
+    padding: "12px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,0.25)",
@@ -636,42 +649,50 @@ const styles = {
   },
   runBtn: {
     width: "100%",
-    padding: "11px 12px",
+    padding: "12px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.18)",
     background:
-      "linear-gradient(135deg, rgba(124,58,237,0.95), rgba(59,130,246,0.88))",
+      "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
     color: "#fff",
     fontWeight: 900,
   },
   resetBtn: {
     width: "100%",
-    padding: "11px 12px",
+    padding: "12px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(0,0,0,0.20)",
-    color: "rgba(232,238,252,0.85)",
-    fontWeight: 900,
+    background: "rgba(0,0,0,0.18)",
+    color: "rgba(232,238,252,0.86)",
+    fontWeight: 800,
+    cursor: "pointer",
   },
 
-  quickRow: {
-    marginTop: 10,
+  quickRowFull: {
+    gridColumn: "1 / -1",
+    marginTop: 2,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
     flexWrap: "wrap",
+    paddingTop: 10,
+    borderTop: "1px solid rgba(255,255,255,0.08)",
   },
-  quickLeft: { display: "flex", alignItems: "center", gap: 8, opacity: 0.9 },
-  quickIcon: { fontSize: 12, opacity: 0.85 },
-  quickLabel: { fontSize: 12, color: "rgba(232,238,252,0.72)", fontWeight: 800 },
-  quickChips: { display: "flex", gap: 8, flexWrap: "wrap" },
+  quickLeft: { display: "flex", alignItems: "center", gap: 8 },
+  quickIcon: { opacity: 0.9 },
+  quickLabel: {
+    fontSize: 12,
+    fontWeight: 900,
+    color: "rgba(232,238,252,0.75)",
+  },
+  quickChips: { display: "flex", gap: 10, flexWrap: "wrap" },
   chipBtn: {
-    padding: "6px 10px",
-    borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.12)",
     background: "rgba(255,255,255,0.06)",
     color: "rgba(232,238,252,0.9)",
+    borderRadius: 999,
+    padding: "8px 12px",
     fontSize: 12,
     fontWeight: 800,
     cursor: "pointer",
@@ -686,262 +707,201 @@ const styles = {
     color: "#ffd7d7",
   },
 
-  resultHead: {
-    marginTop: 16,
-    paddingTop: 14,
-    borderTop: "1px solid rgba(255,255,255,0.10)",
+  resultHeader: {
+    marginTop: 18,
     display: "flex",
-    alignItems: "flex-end",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
+    paddingTop: 14,
+    borderTop: "1px solid rgba(255,255,255,0.10)",
     flexWrap: "wrap",
   },
-  resultMeta: {
-    marginTop: 6,
+  sectionTitle: { fontWeight: 900, fontSize: 13 },
+  sectionSub: { marginTop: 6, color: "rgba(232,238,252,0.70)", fontSize: 12 },
+  resultSub: { marginTop: 6, color: "rgba(232,238,252,0.70)", fontSize: 12 },
+  resultMetaLine: {
+    marginTop: 10,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    color: "rgba(232,238,252,0.62)",
     fontSize: 12,
-    color: "rgba(232,238,252,0.75)",
   },
-  helperSmall: {
-    marginTop: 6,
-    fontSize: 12,
-    color: "rgba(232,238,252,0.60)",
-  },
-  resultActions: { display: "flex", gap: 10, alignItems: "center" },
+  metaItem: { display: "inline-flex", gap: 6, alignItems: "center" },
+  mono: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
+  dot: { opacity: 0.5 },
+  resultRight: { display: "flex", gap: 10, alignItems: "center" },
   copyBtn: {
     padding: "10px 12px",
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,0.22)",
     color: "rgba(232,238,252,0.92)",
     fontWeight: 900,
     cursor: "pointer",
-    whiteSpace: "nowrap",
   },
 
-  analyzedCard: {
-    marginTop: 14,
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.18)",
-    padding: 14,
-  },
-  analyzedTop: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 10,
-    alignItems: "center",
-  },
-  analyzedTitleRow: { display: "flex", gap: 10, alignItems: "center" },
-  analyzedTitle: { fontWeight: 900, fontSize: 13 },
-  analyzedCollapseHint: { opacity: 0.6 },
-  analyzedLine: {
-    marginTop: 10,
-    fontSize: 12,
-    color: "rgba(232,238,252,0.78)",
-  },
-  analyzedHint: {
-    marginTop: 6,
-    fontSize: 12,
-    color: "rgba(232,238,252,0.55)",
-  },
-
-  statsGrid: {
-    marginTop: 14,
+  grid: {
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 12,
+    marginTop: 14,
   },
-
   statCard: {
     borderRadius: 16,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.03)",
     padding: 14,
-    minHeight: 108,
   },
   statTop: {
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
   },
-  statTitle: {
-    fontSize: 12,
-    color: "rgba(232,238,252,0.72)",
-    fontWeight: 900,
-  },
-  shareMiniBtn: {
-    padding: "6px 10px",
-    borderRadius: 999,
+  statTitle: { fontSize: 12, color: "rgba(232,238,252,0.72)", fontWeight: 900 },
+  statValue: { fontSize: 26, fontWeight: 900, marginTop: 8 },
+  statSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.65)" },
+  shareBtn: {
     border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(0,0,0,0.20)",
-    color: "rgba(232,238,252,0.92)",
+    background: "rgba(0,0,0,0.18)",
+    color: "rgba(232,238,252,0.85)",
+    borderRadius: 999,
+    padding: "7px 10px",
+    fontSize: 12,
+    fontWeight: 900,
     cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
   },
-  statValue: { fontSize: 28, fontWeight: 950, marginTop: 12 },
-  statSub: { marginTop: 8, fontSize: 12, color: "rgba(232,238,252,0.60)" },
 
-  noteBar: {
+  noteBox: {
     marginTop: 12,
     padding: "12px 14px",
     borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.20)",
-    color: "rgba(232,238,252,0.70)",
+    background: "rgba(0,0,0,0.18)",
+    color: "rgba(232,238,252,0.78)",
     fontSize: 12,
-  },
-
-  block: { marginTop: 14 },
-  blockHead: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    gap: 12,
-    flexWrap: "wrap",
-    marginBottom: 10,
-  },
-
-  sectionTitle: { fontWeight: 950, fontSize: 13 },
-  sectionSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.60)" },
-
-  readyPill: {
-    padding: "6px 10px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.06)",
-    fontWeight: 900,
-    fontSize: 12,
-    opacity: 0.9,
+    lineHeight: 1.6,
   },
 
   emptyBox: {
-    borderRadius: 16,
-    border: "1px dashed rgba(255,255,255,0.14)",
-    background: "rgba(255,255,255,0.02)",
-    padding: 14,
+    marginTop: 10,
+    padding: "14px 14px",
+    borderRadius: 14,
+    border: "1px dashed rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,0.03)",
+    color: "rgba(232,238,252,0.78)",
+    fontSize: 12,
+    lineHeight: 1.6,
   },
-  emptyTitle: { fontWeight: 900 },
-  emptySub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.60)" },
 
-  bestCard: {
+  bestBox: {
+    marginTop: 10,
     borderRadius: 16,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(0,0,0,0.18)",
-    padding: 14,
+    overflow: "hidden",
   },
   bestTop: {
+    padding: 14,
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
     gap: 12,
+    borderBottom: "1px solid rgba(255,255,255,0.08)",
   },
-  bestLeft: { display: "flex", gap: 12, alignItems: "center" },
-  bestAvatar: {
+  bestIcon: {
     width: 44,
     height: 44,
     borderRadius: 14,
-    background:
-      "linear-gradient(135deg, rgba(124,58,237,0.5), rgba(59,130,246,0.35))",
-    border: "1px solid rgba(255,255,255,0.12)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: 950,
+    display: "grid",
+    placeItems: "center",
+    fontWeight: 900,
     color: "#fff",
+    border: "1px solid rgba(255,255,255,0.14)",
+    background:
+      "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
   },
-  bestName: { fontWeight: 950, fontSize: 16 },
-  bestSub: { marginTop: 4, fontSize: 12, color: "rgba(232,238,252,0.60)" },
-
+  bestName: { fontWeight: 900, fontSize: 16 },
+  bestSub: { marginTop: 2, fontSize: 12, color: "rgba(232,238,252,0.65)" },
+  readyPill: {
+    padding: "6px 10px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.06)",
+    fontSize: 12,
+    fontWeight: 900,
+  },
   bestGrid: {
-    marginTop: 12,
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
+    gap: 10,
+    padding: 14,
   },
-  bestMini: {
+  bestStat: {
     borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.03)",
     padding: 12,
   },
-  bestMiniLabel: { fontSize: 12, color: "rgba(232,238,252,0.65)", fontWeight: 900 },
-  bestMiniValue: { marginTop: 8, fontSize: 18, fontWeight: 950 },
+  bestLabel: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
+  bestValue: { marginTop: 6, fontWeight: 900, fontSize: 18 },
 
-  rolesCard: {
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.18)",
-    padding: 14,
-  },
   roleRow: {
     display: "grid",
     gridTemplateColumns: "160px 1fr",
     gap: 14,
     alignItems: "center",
-    padding: "10px 0",
-    borderBottom: "1px solid rgba(255,255,255,0.06)",
   },
-  roleLeft: { minWidth: 0 },
-  roleName: { fontWeight: 950 },
-  roleMeta: { marginTop: 4, fontSize: 12, color: "rgba(232,238,252,0.60)" },
-  roleBar: {
+  roleLeft: { display: "grid", gap: 4 },
+  roleName: { fontWeight: 900, fontSize: 13 },
+  roleMeta: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
+  roleBarOuter: {
     height: 12,
     borderRadius: 999,
-    background: "rgba(255,255,255,0.06)",
     border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.05)",
     overflow: "hidden",
   },
-  roleFill: {
+  roleBarInner: {
     height: "100%",
     borderRadius: 999,
     background:
-      "linear-gradient(90deg, rgba(168,85,247,0.9), rgba(59,130,246,0.9))",
+      "linear-gradient(90deg, rgba(124,58,237,0.95), rgba(34,211,238,0.85))",
   },
 
-  policyCard: {
-    marginTop: 16,
-    borderRadius: 18,
+  policyBox: {
+    borderRadius: 16,
     border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.03)",
-    padding: 16,
+    background: "rgba(0,0,0,0.18)",
+    padding: 14,
   },
-  policySub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.65)" },
-  pills: { marginTop: 12, display: "flex", flexWrap: "wrap", gap: 10 },
-  pill: {
+  policyChips: { display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 },
+  policyChip: {
     padding: "8px 12px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(0,0,0,0.20)",
+    background: "rgba(255,255,255,0.06)",
     fontSize: 12,
-    fontWeight: 900,
-    color: "rgba(232,238,252,0.85)",
+    fontWeight: 800,
+    color: "rgba(232,238,252,0.88)",
   },
 
-  mono: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
-  dot: { margin: "0 8px", opacity: 0.45 },
-
-  toast: {
-    position: "fixed",
-    left: "50%",
-    bottom: 22,
-    transform: "translateX(-50%)",
-    padding: "10px 12px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(0,0,0,0.70)",
-    color: "rgba(232,238,252,0.95)",
-    fontWeight: 900,
+  footer: {
+    marginTop: 18,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+    color: "rgba(232,238,252,0.60)",
     fontSize: 12,
-    boxShadow: "0 16px 60px rgba(0,0,0,0.45)",
-    zIndex: 9999,
+    paddingBottom: 10,
   },
+  footerSmall: { opacity: 0.9 },
+  footerLinks: { display: "flex", alignItems: "center", gap: 10 },
+  footerLink: { color: "rgba(232,238,252,0.78)", textDecoration: "none" },
 };
-
-/**
- * =========================================================
- * NOTE: Responsive fallback (pure inline style limitation)
- * =========================================================
- * Inline style ile media query yok. Ama grid zaten çoğu ekranda
- * iyi davranır. Eğer mobilde daha da iyi olsun istersen,
- * bir sonraki adımda components/layout.css gibi global CSS ekleriz.
- */
