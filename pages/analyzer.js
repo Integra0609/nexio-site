@@ -1,6 +1,17 @@
 // pages/analyzer.js
 import { useEffect, useMemo, useState } from "react";
 
+/**
+ * =========================================================
+ * CONFIG
+ * =========================================================
+ * Eğer .env kullanmak istersen:
+ * NEXT_PUBLIC_SUPABASE_FN_URL=... diye ekleyebilirsin.
+ */
+const SUPABASE_FN_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_FN_URL ||
+  "https://lpoxlbbcmpxbfpfrufvf.supabase.co/functions/v1/get-player-insights";
+
 const regions = [
   { value: "tr1", label: "TR (tr1)" },
   { value: "euw1", label: "EUW (euw1)" },
@@ -8,20 +19,19 @@ const regions = [
   { value: "kr", label: "KR (kr)" },
 ];
 
-// ✅ Burayı kendi çalışan endpoint’inle aynı bırak / değiştir.
-// Örn: https://lpoxlbbcmpxbfpfrufvf.supabase.co/functions/v1/get-player-insights
-const SUPABASE_FN_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_FN_URL ||
-  "https://lpoxlbbcmpxbfpfrufvf.supabase.co/functions/v1/get-player-insights";
-
-// Quick presetler (istersen değiştir)
 const quickPresets = [
   { label: "faker • KR", name: "faker", region: "kr" },
   { label: "Doublelift • NA1", name: "Doublelift", region: "na1" },
   { label: "Caps • EUW1", name: "Caps", region: "euw1" },
 ];
 
-function formatDateTime(d) {
+function clampPct(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(100, x));
+}
+
+function fmtDate(d) {
   try {
     return new Intl.DateTimeFormat(undefined, {
       year: "numeric",
@@ -33,12 +43,6 @@ function formatDateTime(d) {
   } catch {
     return d.toISOString();
   }
-}
-
-function clampPct(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(100, x));
 }
 
 function StatCard({ title, value, sub, onShare }) {
@@ -60,13 +64,17 @@ function StatCard({ title, value, sub, onShare }) {
 
 function RoleBars({ roles }) {
   if (!roles?.length) {
-    return <div style={styles.emptyBox}>No role data yet.</div>;
+    return (
+      <div style={styles.emptyBox}>
+        <div style={{ fontWeight: 900, marginBottom: 6 }}>No role data yet</div>
+        Run analysis to see role distribution.
+      </div>
+    );
   }
 
   const sorted = [...roles].sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
-
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div style={styles.rolesWrap}>
       {sorted.map((r) => {
         const pct = clampPct(r.pct);
         return (
@@ -92,67 +100,73 @@ export default function Analyzer() {
   const [region, setRegion] = useState("tr1");
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState("");
 
   const [raw, setRaw] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
 
-  // URL -> state (shareable link)
+  // URL -> state (shareable)
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    const qName = url.searchParams.get("name");
-    const qRegion = url.searchParams.get("region");
-    if (qName) setName(qName);
-    if (qRegion) setRegion(qRegion);
+    const u = new URL(window.location.href);
+    const n = u.searchParams.get("name");
+    const r = u.searchParams.get("region");
+    if (n) setName(n);
+    if (r) setRegion(r);
+
+    // Auto-run if name exists in URL
+    if (n) setTimeout(() => run(n, r || "tr1", { syncUrl: false }), 60);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const parsed = useMemo(() => {
     if (!raw) return null;
-
     const insights = raw.insights || {};
-    const sampleSize = insights.sample_size ?? null;
-
-    const last10 = insights.kda_trend?.last_10 ?? null;
-    const best = insights.best_champion ?? null;
-    const roles = insights.role_distribution ?? [];
 
     return {
       ok: raw.ok ?? true,
       source: raw.source ?? "LIVE",
       puuid: raw.puuid ?? null,
 
-      sampleSize,
-      last10,
-      best,
-      roles,
+      sampleSize: insights.sample_size ?? null,
+      last10: insights.kda_trend?.last_10 ?? null,
+      best: insights.best_champion ?? null,
+      roles: Array.isArray(insights.role_distribution)
+        ? insights.role_distribution
+        : [],
     };
   }, [raw]);
 
+  const syncUrl = (n, r) => {
+    if (typeof window === "undefined") return;
+    const u = new URL(window.location.href);
+    u.pathname = "/analyzer";
+    u.searchParams.set("name", n);
+    u.searchParams.set("region", r);
+    u.searchParams.delete("focus");
+    window.history.replaceState({}, "", u.toString());
+  };
+
   const buildResultLink = (n = name, r = region) => {
-    if (typeof window === "undefined") return "";
     const u = new URL(window.location.href);
     u.pathname = "/analyzer";
     u.searchParams.set("name", (n || "").trim());
     u.searchParams.set("region", r || "tr1");
-    // focus param opsiyonel
     u.searchParams.delete("focus");
     return u.toString();
   };
 
   const buildCardLink = (focusKey) => {
-    if (typeof window === "undefined") return "";
     const u = new URL(buildResultLink());
     u.searchParams.set("focus", focusKey);
     return u.toString();
   };
 
-  const copyToClipboard = async (text) => {
+  const copy = async (text) => {
     try {
       await navigator.clipboard.writeText(text);
       return true;
     } catch {
-      // fallback
       try {
         const ta = document.createElement("textarea");
         ta.value = text;
@@ -167,21 +181,11 @@ export default function Analyzer() {
     }
   };
 
-  const syncUrl = (n, r) => {
-    if (typeof window === "undefined") return;
-    const u = new URL(window.location.href);
-    u.pathname = "/analyzer";
-    u.searchParams.set("name", (n || "").trim());
-    u.searchParams.set("region", r || "tr1");
-    u.searchParams.delete("focus");
-    window.history.replaceState({}, "", u.toString());
-  };
-
-  const run = async (nArg, rArg) => {
+  const run = async (nArg, rArg, opts = { syncUrl: true }) => {
     const n = (nArg ?? name).trim();
-    const r = rArg ?? region;
+    const r = (rArg ?? region) || "tr1";
 
-    setError(null);
+    setError("");
     setRaw(null);
 
     if (!n) {
@@ -196,19 +200,17 @@ export default function Analyzer() {
       )}&region=${encodeURIComponent(r)}`;
 
       const res = await fetch(url);
-      const data = await res.json().catch(() => null);
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        const msg =
-          data?.error ||
-          data?.message ||
-          `Request failed (${res.status})`;
-        throw new Error(msg);
+        throw new Error(
+          data?.error || data?.message || `Request failed (${res.status})`
+        );
       }
 
       setRaw(data);
       setUpdatedAt(new Date());
-      syncUrl(n, r);
+      if (opts.syncUrl !== false) syncUrl(n, r);
     } catch (e) {
       setError(e?.message || "Failed to fetch");
     } finally {
@@ -217,7 +219,7 @@ export default function Analyzer() {
   };
 
   const reset = () => {
-    setError(null);
+    setError("");
     setRaw(null);
     setUpdatedAt(null);
     setName("");
@@ -226,9 +228,7 @@ export default function Analyzer() {
     if (typeof window !== "undefined") {
       const u = new URL(window.location.href);
       u.pathname = "/analyzer";
-      u.searchParams.delete("name");
-      u.searchParams.delete("region");
-      u.searchParams.delete("focus");
+      u.search = "";
       window.history.replaceState({}, "", u.toString());
     }
   };
@@ -247,37 +247,39 @@ export default function Analyzer() {
     }
   }, [raw, updatedAt, error, loading, name, region]);
 
-  // Focus highlight (optional)
-  const cardGlow = (key) =>
+  const glow = (key) =>
     focus === key
-      ? { boxShadow: "0 0 0 2px rgba(124,58,237,0.35), 0 20px 80px rgba(0,0,0,0.35)" }
+      ? {
+          boxShadow:
+            "0 0 0 2px rgba(124,58,237,0.35), 0 26px 90px rgba(0,0,0,0.35)",
+          borderRadius: 16,
+        }
       : null;
 
   return (
     <main style={styles.page}>
       <div style={styles.container}>
-        {/* Header */}
+        {/* HERO */}
         <header style={styles.hero}>
           <div style={styles.badgeRow}>
-            <div style={styles.badge}>ANALYZER</div>
-            <div style={styles.badgeSoft}>Post-match only</div>
-            <div style={styles.badgeSoft}>Policy-aware</div>
+            <span style={styles.badge}>ANALYZER</span>
+            <span style={styles.badgeSoft}>Post-match only</span>
+            <span style={styles.badgeSoft}>Policy-aware</span>
           </div>
 
           <h1 style={styles.h1}>
-            Performance insights for{" "}
-            <span style={styles.gradWord}>esports</span>.
+            Performance insights for <span style={styles.gradWord}>esports</span>.
           </h1>
 
           <p style={styles.lead}>
-            Clean summaries based on recently available public match data.
-            Shareable links included — built for clarity, designed to be policy-aware.
+            Clean summaries based on recently available public match data. Shareable
+            links included — built for clarity, designed to be policy-aware.
           </p>
         </header>
 
-        {/* Main Card */}
+        {/* CARD */}
         <section style={styles.card}>
-          {/* Form */}
+          {/* FORM */}
           <div style={styles.formGrid}>
             <div style={styles.field}>
               <label style={styles.label}>Summoner name</label>
@@ -328,7 +330,7 @@ export default function Analyzer() {
               </button>
             </div>
 
-            {/* ✅ Quick row full width (fixed layout) */}
+            {/* Quick presets full width */}
             <div style={styles.quickRowFull}>
               <div style={styles.quickLeft}>
                 <span style={styles.quickIcon}>⚡</span>
@@ -339,12 +341,12 @@ export default function Analyzer() {
                   <button
                     key={p.label}
                     style={styles.chipBtn}
+                    type="button"
                     onClick={() => {
                       setName(p.name);
                       setRegion(p.region);
                       run(p.name, p.region);
                     }}
-                    type="button"
                   >
                     {p.label}
                   </button>
@@ -359,49 +361,49 @@ export default function Analyzer() {
             </div>
           ) : null}
 
-          {/* Result header */}
+          {/* RESULT HEAD */}
           <div style={styles.resultHeader}>
             <div>
               <div style={styles.sectionTitle}>Result</div>
-              <div style={styles.resultSub}>
-                Run an analysis to see results. You can share result links and card links.
+              <div style={styles.sectionSub}>
+                Run an analysis to see results. Copy/share links are included.
               </div>
-              <div style={styles.resultMetaLine}>
+              <div style={styles.metaRow}>
                 <span style={styles.metaItem}>
                   Last updated:{" "}
                   <span style={styles.mono}>
-                    {updatedAt ? formatDateTime(updatedAt) : "—"}
+                    {updatedAt ? fmtDate(updatedAt) : "—"}
                   </span>
                 </span>
                 <span style={styles.dot}>•</span>
                 <span style={styles.metaItem}>
                   Source:{" "}
-                  <span style={styles.mono}>
-                    {parsed?.source ? parsed.source : "—"}
-                  </span>
+                  <span style={styles.mono}>{parsed?.source || "—"}</span>
                 </span>
               </div>
             </div>
 
-            <div style={styles.resultRight}>
-              <button
-                type="button"
-                style={styles.copyBtn}
-                onClick={async () => {
-                  const ok = await copyToClipboard(buildResultLink());
-                  if (!ok) alert("Copy failed.");
-                }}
-                disabled={!name.trim()}
-                title={!name.trim() ? "Enter a summoner name first" : "Copy link"}
-              >
-                ⧉ Copy result link
-              </button>
-            </div>
+            <button
+              type="button"
+              style={{
+                ...styles.copyBtn,
+                opacity: name.trim() ? 1 : 0.6,
+                cursor: name.trim() ? "pointer" : "not-allowed",
+              }}
+              disabled={!name.trim()}
+              onClick={async () => {
+                const ok = await copy(buildResultLink());
+                if (!ok) alert("Copy failed.");
+              }}
+              title={!name.trim() ? "Enter a summoner name first" : "Copy link"}
+            >
+              ⧉ Copy result link
+            </button>
           </div>
 
-          {/* Cards */}
+          {/* KPI GRID */}
           <div style={styles.grid}>
-            <div style={cardGlow("sample")}>
+            <div style={glow("sample")}>
               <StatCard
                 title="Sample size"
                 value={parsed?.sampleSize ?? "—"}
@@ -409,7 +411,7 @@ export default function Analyzer() {
                 onShare={
                   name.trim()
                     ? async () => {
-                        const ok = await copyToClipboard(buildCardLink("sample"));
+                        const ok = await copy(buildCardLink("sample"));
                         if (!ok) alert("Copy failed.");
                       }
                     : null
@@ -417,10 +419,12 @@ export default function Analyzer() {
               />
             </div>
 
-            <div style={cardGlow("kda")}>
+            <div style={glow("kda")}>
               <StatCard
                 title="Recent KDA"
-                value={parsed?.last10?.kda ?? "—"}
+                value={
+                  parsed?.last10?.kda != null ? parsed.last10.kda : "—"
+                }
                 sub={
                   parsed?.last10
                     ? `${parsed.last10.games} game • ${parsed.last10.winrate_pct}% WR`
@@ -429,7 +433,7 @@ export default function Analyzer() {
                 onShare={
                   name.trim()
                     ? async () => {
-                        const ok = await copyToClipboard(buildCardLink("kda"));
+                        const ok = await copy(buildCardLink("kda"));
                         if (!ok) alert("Copy failed.");
                       }
                     : null
@@ -437,7 +441,7 @@ export default function Analyzer() {
               />
             </div>
 
-            <div style={cardGlow("id")}>
+            <div style={glow("id")}>
               <StatCard
                 title="Player ID"
                 value={parsed?.puuid ? "Resolved" : "—"}
@@ -445,7 +449,7 @@ export default function Analyzer() {
                 onShare={
                   name.trim()
                     ? async () => {
-                        const ok = await copyToClipboard(buildCardLink("id"));
+                        const ok = await copy(buildCardLink("id"));
                         if (!ok) alert("Copy failed.");
                       }
                     : null
@@ -454,24 +458,25 @@ export default function Analyzer() {
             </div>
           </div>
 
-          {/* Note box */}
           <div style={styles.noteBox}>
-            <strong>Note:</strong> This is post-match analytics only. Nexio.gg provides no real-time assistance,
-            automation, scripting, or gameplay modification.
+            <strong>Note:</strong> Post-match analytics only. Nexio.gg provides no
+            real-time assistance, automation, scripting, or gameplay modification.
           </div>
 
-          {/* Best champion */}
+          {/* BEST CHAMP */}
           <div style={{ marginTop: 18 }}>
             <div style={styles.sectionTitle}>Best champion breakdown</div>
             <div style={styles.sectionSub}>
-              A compact breakdown from the recent sample.
+              Compact breakdown from the recent sample.
             </div>
 
             {parsed?.best ? (
               <div style={styles.bestBox}>
                 <div style={styles.bestTop}>
                   <div style={styles.bestIcon}>
-                    {String(parsed.best.champion_name || "C").slice(0, 1).toUpperCase()}
+                    {String(parsed.best.champion_name || "C")
+                      .slice(0, 1)
+                      .toUpperCase()}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={styles.bestName}>{parsed.best.champion_name}</div>
@@ -493,22 +498,26 @@ export default function Analyzer() {
               </div>
             ) : (
               <div style={styles.emptyBox}>
-                <div style={{ fontWeight: 800, marginBottom: 6 }}>Not enough data yet</div>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>
+                  Not enough data yet
+                </div>
                 Best champion breakdown will appear after more recent matches are available.
               </div>
             )}
           </div>
 
-          {/* Roles */}
+          {/* ROLES */}
           <div style={{ marginTop: 18 }}>
             <div style={styles.sectionTitle}>Role distribution</div>
-            <div style={styles.sectionSub}>Based on recent matches — mini bar chart.</div>
+            <div style={styles.sectionSub}>
+              Based on recent matches — mini bar chart.
+            </div>
             <div style={{ marginTop: 10 }}>
               <RoleBars roles={parsed?.roles} />
             </div>
           </div>
 
-          {/* Policy */}
+          {/* POLICY */}
           <div style={{ marginTop: 18 }}>
             <div style={styles.policyBox}>
               <div style={styles.sectionTitle}>Policy & disclaimer</div>
@@ -533,15 +542,21 @@ export default function Analyzer() {
           </div>
         </section>
 
-        {/* Footer */}
+        {/* FOOTER */}
         <footer style={styles.footer}>
           <div style={styles.footerSmall}>© 2026 Nexio.gg</div>
           <div style={styles.footerLinks}>
-            <a href="/" style={styles.footerLink}>Home</a>
+            <a href="/" style={styles.footerLink}>
+              Home
+            </a>
             <span style={styles.dot}>•</span>
-            <a href="/terms" style={styles.footerLink}>Terms</a>
+            <a href="/terms" style={styles.footerLink}>
+              Terms
+            </a>
             <span style={styles.dot}>•</span>
-            <a href="/privacy" style={styles.footerLink}>Privacy</a>
+            <a href="/privacy" style={styles.footerLink}>
+              Privacy
+            </a>
           </div>
         </footer>
       </div>
@@ -613,15 +628,15 @@ const styles = {
     backdropFilter: "blur(10px)",
   },
 
-  // ✅ Fixed layout: quick row full width
+  // ✅ FINAL FIX: FLEX WRAP → overlap yok
   formGrid: {
-    display: "grid",
-    gridTemplateColumns: "minmax(320px, 1fr) 260px 200px 180px",
+    display: "flex",
+    flexWrap: "wrap",
     gap: 12,
-    alignItems: "end",
+    alignItems: "flex-end",
   },
-  field: { minWidth: 0 },
-  fieldBtn: { minWidth: 0 },
+  field: { flex: "1 1 360px", minWidth: 260 },
+  fieldBtn: { flex: "0 0 180px", minWidth: 160 },
 
   label: {
     display: "block",
@@ -669,7 +684,7 @@ const styles = {
   },
 
   quickRowFull: {
-    gridColumn: "1 / -1",
+    width: "100%",
     marginTop: 2,
     display: "flex",
     alignItems: "center",
@@ -719,8 +734,7 @@ const styles = {
   },
   sectionTitle: { fontWeight: 900, fontSize: 13 },
   sectionSub: { marginTop: 6, color: "rgba(232,238,252,0.70)", fontSize: 12 },
-  resultSub: { marginTop: 6, color: "rgba(232,238,252,0.70)", fontSize: 12 },
-  resultMetaLine: {
+  metaRow: {
     marginTop: 10,
     display: "flex",
     alignItems: "center",
@@ -732,7 +746,7 @@ const styles = {
   metaItem: { display: "inline-flex", gap: 6, alignItems: "center" },
   mono: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
   dot: { opacity: 0.5 },
-  resultRight: { display: "flex", gap: 10, alignItems: "center" },
+
   copyBtn: {
     padding: "10px 12px",
     borderRadius: 999,
@@ -740,7 +754,6 @@ const styles = {
     background: "rgba(0,0,0,0.22)",
     color: "rgba(232,238,252,0.92)",
     fontWeight: 900,
-    cursor: "pointer",
   },
 
   grid: {
@@ -850,6 +863,7 @@ const styles = {
   bestLabel: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
   bestValue: { marginTop: 6, fontWeight: 900, fontSize: 18 },
 
+  rolesWrap: { display: "grid", gap: 12 },
   roleRow: {
     display: "grid",
     gridTemplateColumns: "160px 1fr",
