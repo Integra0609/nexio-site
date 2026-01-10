@@ -16,11 +16,25 @@ export default function App({ Component, pageProps }) {
       <style jsx global>{`
         html,
         body {
+          padding: 0;
+          margin: 0;
           height: 100%;
         }
+
         body {
-          margin: 0;
           overflow-x: hidden;
+          background: radial-gradient(
+              1200px 600px at 15% 12%,
+              rgba(124, 58, 237, 0.22),
+              transparent 60%
+            ),
+            radial-gradient(
+              900px 500px at 85% 18%,
+              rgba(59, 130, 246, 0.18),
+              transparent 55%
+            ),
+            #070b18;
+          color: #e8eefc;
         }
 
         .appShell {
