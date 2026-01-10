@@ -13,8 +13,6 @@ export default function SiteHeader() {
       { href: "/analyzer", label: "Analyzer" },
       { href: "/how-it-works", label: "How it works" },
       { href: "/about", label: "About" },
-      { href: "/terms", label: "Terms" },
-      { href: "/privacy", label: "Privacy" },
     ],
     []
   );
@@ -33,17 +31,6 @@ export default function SiteHeader() {
     };
     if (open) window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  // Lock scroll while open (bu “soluk overlay takıldı” hissini de engeller)
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
   }, [open]);
 
   return (
@@ -78,14 +65,19 @@ export default function SiteHeader() {
               </Link>
             );
           })}
-          <Link href="/analyzer" style={styles.primaryCta}>
-            Open Analyzer
-          </Link>
+
+          {/* CTA SLOT (future auth) */}
+          <button
+            type="button"
+            style={styles.authCta}
+            onClick={() => alert("Login is coming soon.")}
+          >
+            Login (soon)
+          </button>
         </nav>
 
         {/* Mobile hamburger */}
         <button
-          data-burger="1"
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-label={open ? "Close menu" : "Open menu"}
@@ -95,22 +87,22 @@ export default function SiteHeader() {
           <span
             style={{
               ...styles.bLine,
-              ...styles.bTop,
-              ...(open ? styles.bTopOpen : null),
+              ...(open ? styles.bLineTopOpen : null),
+              top: 14,
             }}
           />
           <span
             style={{
               ...styles.bLine,
-              ...styles.bMid,
-              ...(open ? styles.bMidOpen : null),
+              ...(open ? styles.bLineMidOpen : null),
+              top: 19,
             }}
           />
           <span
             style={{
               ...styles.bLine,
-              ...styles.bBot,
-              ...(open ? styles.bBotOpen : null),
+              ...(open ? styles.bLineBotOpen : null),
+              top: 24,
             }}
           />
         </button>
@@ -143,7 +135,6 @@ export default function SiteHeader() {
                       ...styles.mobileLink,
                       ...(active ? styles.mobileLinkActive : null),
                     }}
-                    onClick={() => setOpen(false)}
                   >
                     {item.label}
                   </Link>
@@ -152,13 +143,14 @@ export default function SiteHeader() {
             </div>
 
             <div style={styles.mobileCtas}>
-              <Link
-                href="/analyzer"
-                style={styles.mobilePrimaryCta}
-                onClick={() => setOpen(false)}
+              <button
+                type="button"
+                style={styles.mobileAuthCta}
+                onClick={() => alert("Login is coming soon.")}
               >
-                Open Analyzer
-              </Link>
+                Login (soon)
+              </button>
+
               <div style={styles.mobileHint}>
                 Nexio.gg is not affiliated with Riot Games.
               </div>
@@ -166,6 +158,21 @@ export default function SiteHeader() {
           </div>
         </>
       ) : null}
+
+      {/* Responsive visibility rules (no globals.css needed) */}
+      <style jsx>{`
+        @media (max-width: 860px) {
+          nav[aria-label="Primary"] {
+            display: none !important;
+          }
+        }
+        @media (max-width: 860px) {
+          button[aria-label="Open menu"],
+          button[aria-label="Close menu"] {
+            display: inline-flex !important;
+          }
+        }
+      `}</style>
     </header>
   );
 }
@@ -215,10 +222,7 @@ const styles = {
     fontSize: 18,
     whiteSpace: "nowrap",
   },
-  brandTld: {
-    color: "rgba(232,238,252,0.75)",
-    fontWeight: 900,
-  },
+  brandTld: { color: "rgba(232,238,252,0.75)", fontWeight: 900 },
 
   badge: {
     display: "inline-flex",
@@ -235,11 +239,7 @@ const styles = {
     whiteSpace: "nowrap",
   },
 
-  navDesktop: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-  },
+  navDesktop: { display: "flex", alignItems: "center", gap: 10 },
   navLink: {
     textDecoration: "none",
     color: "rgba(232,238,252,0.80)",
@@ -255,16 +255,18 @@ const styles = {
     background: "rgba(255,255,255,0.06)",
     color: "#e8eefc",
   },
-  primaryCta: {
-    textDecoration: "none",
-    color: "#fff",
+
+  authCta: {
+    appearance: "none",
+    WebkitAppearance: "none",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.06)",
+    color: "#e8eefc",
+    padding: "10px 12px",
     fontSize: 13,
     fontWeight: 950,
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background:
-      "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
+    cursor: "pointer",
     whiteSpace: "nowrap",
   },
 
@@ -283,18 +285,16 @@ const styles = {
   },
   bLine: {
     position: "absolute",
+    left: 13,
     width: 18,
     height: 2,
     background: "rgba(232,238,252,0.92)",
     borderRadius: 999,
     transition: "transform 180ms ease, opacity 180ms ease",
   },
-  bTop: { transform: "translateY(-6px)" },
-  bMid: { transform: "translateY(0px)" },
-  bBot: { transform: "translateY(6px)" },
-  bTopOpen: { transform: "translateY(0px) rotate(45deg)" },
-  bMidOpen: { opacity: 0 },
-  bBotOpen: { transform: "translateY(0px) rotate(-45deg)" },
+  bLineTopOpen: { transform: "translateY(5px) rotate(45deg)" },
+  bLineMidOpen: { opacity: 0 },
+  bLineBotOpen: { transform: "translateY(-5px) rotate(-45deg)" },
 
   backdrop: {
     position: "fixed",
@@ -334,11 +334,7 @@ const styles = {
     cursor: "pointer",
     fontWeight: 900,
   },
-  mobileLinks: {
-    display: "grid",
-    gap: 8,
-    padding: 14,
-  },
+  mobileLinks: { display: "grid", gap: 8, padding: 14 },
   mobileLink: {
     textDecoration: "none",
     color: "rgba(232,238,252,0.88)",
@@ -359,16 +355,17 @@ const styles = {
     display: "grid",
     gap: 10,
   },
-  mobilePrimaryCta: {
-    textDecoration: "none",
-    textAlign: "center",
-    color: "#fff",
-    fontWeight: 950,
-    padding: "12px 12px",
+  mobileAuthCta: {
+    appearance: "none",
+    WebkitAppearance: "none",
     borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.18)",
     background:
       "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
+    color: "#fff",
+    padding: "12px 12px",
+    fontWeight: 950,
+    cursor: "pointer",
   },
   mobileHint: {
     fontSize: 12,
