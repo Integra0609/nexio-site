@@ -5,8 +5,7 @@ const SUPABASE_FN_URL =
   process.env.NEXT_PUBLIC_SUPABASE_FN_URL ||
   "https://lpoxlbbcmpxbfpfrufvf.supabase.co/functions/v1/get-player-insights";
 
-// (Opsiyonel) AI recap endpoint'in olursa buraya koyarsın (yoksa UI “Coming soon” gösterir)
-const AI_RECAP_URL = process.env.NEXT_PUBLIC_AI_RECAP_URL || "";
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 const regions = [
   { value: "tr1", label: "TR (tr1)" },
@@ -37,7 +36,7 @@ function fmtDate(d) {
       minute: "2-digit",
     }).format(d);
   } catch {
-    return d?.toISOString?.() || "";
+    return d.toISOString();
   }
 }
 
@@ -91,30 +90,6 @@ function RoleBars({ roles }) {
   );
 }
 
-// Basit local rate limit (MVP)
-// Günlük X kere recap üretmeye izin ver (guest için).
-function getTodayKey() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-function readDailyCount(key) {
-  try {
-    const raw = localStorage.getItem(key);
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : 0;
-  } catch {
-    return 0;
-  }
-}
-function writeDailyCount(key, n) {
-  try {
-    localStorage.setItem(key, String(n));
-  } catch {}
-}
-
 export default function Analyzer() {
   const [name, setName] = useState("");
   const [region, setRegion] = useState("tr1");
@@ -125,10 +100,10 @@ export default function Analyzer() {
   const [raw, setRaw] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
 
-  // AI recap UI state
-  const [recapLoading, setRecapLoading] = useState(false);
-  const [recapError, setRecapError] = useState("");
-  const [recapText, setRecapText] = useState("");
+  const authOn = Boolean(SUPABASE_ANON_KEY && SUPABASE_ANON_KEY.length > 20);
+  const maskedKey = authOn
+    ? `${SUPABASE_ANON_KEY.slice(0, 8)}…${SUPABASE_ANON_KEY.slice(-6)}`
+    : "—";
 
   // URL -> state (shareable)
   useEffect(() => {
@@ -156,6 +131,7 @@ export default function Analyzer() {
       roles: Array.isArray(insights.role_distribution)
         ? insights.role_distribution
         : [],
+      aiRecap: raw.ai_recap ?? null, // ileride
     };
   }, [raw]);
 
@@ -209,11 +185,16 @@ export default function Analyzer() {
 
     setError("");
     setRaw(null);
-    setRecapError("");
-    setRecapText("");
 
     if (!n) {
       setError("Summoner name required.");
+      return;
+    }
+
+    if (!authOn) {
+      setError(
+        "Supabase anon key missing. Add NEXT_PUBLIC_SUPABASE_ANON_KEY to Vercel and redeploy."
+      );
       return;
     }
 
@@ -223,7 +204,13 @@ export default function Analyzer() {
         n
       )}&region=${encodeURIComponent(r)}`;
 
-      const res = await fetch(url);
+      // ✅ IMPORTANT: Supabase Edge Function expects auth headers
+      const headers = {
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        apikey: SUPABASE_ANON_KEY,
+      };
+
+      const res = await fetch(url, { headers });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -248,8 +235,6 @@ export default function Analyzer() {
     setUpdatedAt(null);
     setName("");
     setRegion("tr1");
-    setRecapError("");
-    setRecapText("");
 
     if (typeof window !== "undefined") {
       const u = new URL(window.location.href);
@@ -282,98 +267,27 @@ export default function Analyzer() {
         }
       : null;
 
-  // AI recap (read-only UI)
-  const DAILY_LIMIT_GUEST = 3;
-  const canGenerateRecap = () => {
-    if (typeof window === "undefined") return false;
-    const k = `nexio:recap:${getTodayKey()}`;
-    const used = readDailyCount(k);
-    return used < DAILY_LIMIT_GUEST;
-  };
-  const incRecapCount = () => {
-    if (typeof window === "undefined") return;
-    const k = `nexio:recap:${getTodayKey()}`;
-    const used = readDailyCount(k);
-    writeDailyCount(k, used + 1);
-  };
-
-  const buildRecapLink = () => {
-    const u = new URL(buildResultLink());
-    u.searchParams.set("focus", "recap");
-    return u.toString();
-  };
-
-  const generateRecap = async () => {
-    setRecapError("");
-    setRecapText("");
-
-    const n = name.trim();
-    if (!n) {
-      setRecapError("Enter a summoner name first.");
-      return;
-    }
-    if (!parsed) {
-      setRecapError("Run analysis first.");
-      return;
-    }
-
-    // MVP rate limit (guest)
-    if (!canGenerateRecap()) {
-      setRecapError(
-        `Daily limit reached (guest). Login gating will come with Auth.`
-      );
-      return;
-    }
-
-    // Backend yoksa şimdilik “coming soon”
-    if (!AI_RECAP_URL) {
-      incRecapCount();
-      setRecapText(
-        "AI recap is wired in the UI. Next step is the recap endpoint + Auth gating (logged-in only)."
-      );
-      return;
-    }
-
-    setRecapLoading(true);
-    try {
-      const url = `${AI_RECAP_URL}?name=${encodeURIComponent(
-        n
-      )}&region=${encodeURIComponent(region)}`;
-      const res = await fetch(url);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || data?.message || "Recap failed");
-      incRecapCount();
-      setRecapText(String(data?.recap || data?.text || "").trim() || "—");
-    } catch (e) {
-      setRecapError(e?.message || "Recap failed");
-    } finally {
-      setRecapLoading(false);
-    }
-  };
-
   return (
     <main style={styles.page}>
-      {/* Native select dropdown tonlarını iyileştirmek için global CSS */}
-      <style jsx global>{`
-        :root {
-          color-scheme: dark;
-        }
-        select {
-          color-scheme: dark;
-        }
-        /* Bazı tarayıcılarda option list’e yansır, bazılarında yansımaz */
-        select option {
-          background: #0a0f22;
-          color: #e8eefc;
-        }
-      `}</style>
-
       <div style={styles.container}>
         <header style={styles.hero}>
           <div style={styles.badgeRow}>
             <span style={styles.badge}>ANALYZER</span>
             <span style={styles.badgeSoft}>Post-match only</span>
             <span style={styles.badgeSoft}>Policy-aware</span>
+
+            {/* mini debug */}
+            <span
+              style={{
+                ...styles.badgeSoft,
+                borderColor: authOn
+                  ? "rgba(34,197,94,0.35)"
+                  : "rgba(239,68,68,0.35)",
+              }}
+              title={authOn ? maskedKey : "Missing NEXT_PUBLIC_SUPABASE_ANON_KEY"}
+            >
+              Auth: {authOn ? "ON" : "OFF"}
+            </span>
           </div>
 
           <h1 style={styles.h1}>
@@ -381,13 +295,13 @@ export default function Analyzer() {
           </h1>
 
           <p style={styles.lead}>
-            Clean summaries based on recently available public match data.
-            Shareable links included — built for clarity, designed to be policy-aware.
+            Clean summaries based on recently available public match data. Shareable
+            links included — built for clarity, designed to be policy-aware.
           </p>
         </header>
 
         <section style={styles.card}>
-          {/* ✅ FORM: Summoner field daraltıldı + overlap yok */}
+          {/* ✅ FORM: overlap yok (flex-wrap) */}
           <div style={styles.formRow}>
             <div style={styles.fieldGrow}>
               <label style={styles.label}>Summoner name</label>
@@ -403,20 +317,17 @@ export default function Analyzer() {
 
             <div style={styles.fieldFixed}>
               <label style={styles.label}>Region</label>
-              <div style={styles.selectWrap}>
-                <select
-                  value={region}
-                  onChange={(e) => setRegion(e.target.value)}
-                  style={styles.select}
-                >
-                  {regions.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-                <span style={styles.selectCaret}>▾</span>
-              </div>
+              <select
+                value={region}
+                onChange={(e) => setRegion(e.target.value)}
+                style={styles.select}
+              >
+                {regions.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div style={styles.btnFixed}>
@@ -564,69 +475,6 @@ export default function Analyzer() {
             </div>
           </div>
 
-          {/* ✅ AI Insight / Recap (read-only MVP UI) */}
-          <div style={{ marginTop: 14 }} />
-          <div style={glow("recap")}>
-            <div style={styles.aiCard}>
-              <div style={styles.aiTop}>
-                <div>
-                  <div style={styles.aiTitleRow}>
-                    <span style={styles.sectionTitle}>AI Recap</span>
-                    <span style={styles.aiBeta}>BETA</span>
-                  </div>
-                  <div style={styles.sectionSub}>
-                    Read-only. Shareable. (MVP: local rate limit, Product: login only)
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    style={{
-                      ...styles.copyBtn,
-                      opacity: name.trim() ? 1 : 0.6,
-                      cursor: name.trim() ? "pointer" : "not-allowed",
-                    }}
-                    disabled={!name.trim()}
-                    onClick={async () => {
-                      const ok = await copy(buildRecapLink());
-                      if (!ok) alert("Copy failed.");
-                    }}
-                  >
-                    ⧉ Copy link
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={generateRecap}
-                    disabled={recapLoading}
-                    style={{
-                      ...styles.runBtnSmall,
-                      opacity: recapLoading ? 0.7 : 1,
-                      cursor: recapLoading ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {recapLoading ? "Generating..." : "Generate AI recap"}
-                  </button>
-                </div>
-              </div>
-
-              {recapError ? (
-                <div style={styles.alertError}>
-                  <strong>AI recap:</strong> {recapError}
-                </div>
-              ) : null}
-
-              {recapText ? (
-                <div style={styles.aiBody}>{recapText}</div>
-              ) : (
-                <div style={styles.aiEmpty}>
-                  Run an analysis to generate an AI recap.
-                </div>
-              )}
-            </div>
-          </div>
-
           <div style={styles.noteBox}>
             <strong>Note:</strong> Post-match analytics only. Nexio.gg provides no
             real-time assistance, automation, scripting, or gameplay modification.
@@ -647,9 +495,7 @@ export default function Analyzer() {
                       .toUpperCase()}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={styles.bestName}>
-                      {parsed.best.champion_name}
-                    </div>
+                    <div style={styles.bestName}>{parsed.best.champion_name}</div>
                     <div style={styles.bestSub}>Best champion (recent)</div>
                   </div>
                   <div style={styles.readyPill}>READY</div>
@@ -695,8 +541,8 @@ export default function Analyzer() {
             <div style={styles.policyBox}>
               <div style={styles.sectionTitle}>Policy & disclaimer</div>
               <div style={styles.sectionSub}>
-                Nexio.gg is not affiliated with, endorsed, sponsored, or approved by
-                Riot Games.
+                Nexio.gg is not affiliated with, endorsed, sponsored, or approved
+                by Riot Games.
               </div>
               <div style={styles.policyChips}>
                 {[
@@ -740,8 +586,6 @@ export default function Analyzer() {
 const styles = {
   page: {
     minHeight: "100vh",
-    // ✅ Tarayıcıya dark UI sinyali (native controls)
-    colorScheme: "dark",
     background:
       "radial-gradient(1200px 600px at 15% 12%, rgba(124,58,237,0.22), transparent 60%), radial-gradient(900px 500px at 85% 18%, rgba(59,130,246,0.18), transparent 55%), #070b18",
     color: "#e8eefc",
@@ -777,11 +621,17 @@ const styles = {
     fontFamily: "ui-serif, Georgia, serif",
   },
   gradWord: {
-    background: "linear-gradient(90deg, rgba(124,58,237,1), rgba(59,130,246,1))",
+    background:
+      "linear-gradient(90deg, rgba(124,58,237,1), rgba(59,130,246,1))",
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
   },
-  lead: { margin: 0, maxWidth: 820, color: "rgba(232,238,252,0.72)", lineHeight: 1.6 },
+  lead: {
+    margin: 0,
+    maxWidth: 820,
+    color: "rgba(232,238,252,0.72)",
+    lineHeight: 1.6,
+  },
 
   card: {
     marginTop: 18,
@@ -793,13 +643,24 @@ const styles = {
     backdropFilter: "blur(10px)",
   },
 
-  // ✅ Summoner daha dar (önce çok genişti)
-  formRow: { display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" },
-  fieldGrow: { flex: "1 1 420px", minWidth: 280 }, // <-- daralttık
-  fieldFixed: { flex: "0 0 250px", minWidth: 220 },
-  btnFixed: { flex: "0 0 170px", minWidth: 150 },
+  // ✅ Overlap yok: flex + wrap
+  formRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 12,
+    alignItems: "flex-end",
+  },
+  // Summoner daha dar olsun (isteğin buydu)
+  fieldGrow: { flex: "1 1 420px", minWidth: 260 },
+  fieldFixed: { flex: "0 0 240px", minWidth: 220 },
+  btnFixed: { flex: "0 0 180px", minWidth: 160 },
 
-  label: { display: "block", fontSize: 12, color: "rgba(232,238,252,0.75)", marginBottom: 6 },
+  label: {
+    display: "block",
+    fontSize: 12,
+    color: "rgba(232,238,252,0.75)",
+    marginBottom: 6,
+  },
   input: {
     width: "100%",
     boxSizing: "border-box",
@@ -810,49 +671,24 @@ const styles = {
     color: "#e8eefc",
     outline: "none",
   },
-
-  // ✅ Select wrapper + caret
-  selectWrap: { position: "relative" },
-  selectCaret: {
-    position: "absolute",
-    right: 12,
-    top: "50%",
-    transform: "translateY(-10%)",
-    pointerEvents: "none",
-    opacity: 0.7,
-    fontWeight: 900,
-  },
   select: {
     width: "100%",
     boxSizing: "border-box",
-    padding: "12px 38px 12px 12px",
+    padding: "12px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,0.25)",
     color: "#e8eefc",
     outline: "none",
-    appearance: "none",
-    WebkitAppearance: "none",
-    MozAppearance: "none",
-    // ✅ native dropdown tonlarını koyulaştırma
-    colorScheme: "dark",
   },
-
   runBtn: {
     width: "100%",
     boxSizing: "border-box",
     padding: "12px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.18)",
-    background: "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
-    color: "#fff",
-    fontWeight: 900,
-  },
-  runBtnSmall: {
-    padding: "10px 12px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
+    background:
+      "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
     color: "#fff",
     fontWeight: 900,
   },
@@ -881,7 +717,11 @@ const styles = {
   },
   quickLeft: { display: "flex", alignItems: "center", gap: 8 },
   quickIcon: { opacity: 0.9 },
-  quickLabel: { fontSize: 12, fontWeight: 900, color: "rgba(232,238,252,0.75)" },
+  quickLabel: {
+    fontSize: 12,
+    fontWeight: 900,
+    color: "rgba(232,238,252,0.75)",
+  },
   quickChips: { display: "flex", gap: 10, flexWrap: "wrap" },
   chipBtn: {
     border: "1px solid rgba(255,255,255,0.12)",
@@ -914,7 +754,11 @@ const styles = {
     flexWrap: "wrap",
   },
   sectionTitle: { fontWeight: 900, fontSize: 13 },
-  sectionSub: { marginTop: 6, color: "rgba(232,238,252,0.70)", fontSize: 12 },
+  sectionSub: {
+    marginTop: 6,
+    color: "rgba(232,238,252,0.70)",
+    fontSize: 12,
+  },
   metaRow: {
     marginTop: 10,
     display: "flex",
@@ -949,8 +793,17 @@ const styles = {
     background: "rgba(255,255,255,0.03)",
     padding: 14,
   },
-  statTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  statTitle: { fontSize: 12, color: "rgba(232,238,252,0.72)", fontWeight: 900 },
+  statTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  statTitle: {
+    fontSize: 12,
+    color: "rgba(232,238,252,0.72)",
+    fontWeight: 900,
+  },
   statValue: { fontSize: 26, fontWeight: 900, marginTop: 8 },
   statSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.65)" },
   shareBtn: {
@@ -964,53 +817,6 @@ const styles = {
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
-  },
-
-  // AI Recap card
-  aiCard: {
-    marginTop: 14,
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.18)",
-    padding: 14,
-  },
-  aiTop: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  aiTitleRow: { display: "flex", alignItems: "center", gap: 10 },
-  aiBeta: {
-    padding: "4px 8px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.06)",
-    fontSize: 11,
-    fontWeight: 900,
-    color: "rgba(232,238,252,0.88)",
-  },
-  aiEmpty: {
-    marginTop: 10,
-    padding: "14px 14px",
-    borderRadius: 14,
-    border: "1px dashed rgba(255,255,255,0.18)",
-    background: "rgba(255,255,255,0.03)",
-    color: "rgba(232,238,252,0.78)",
-    fontSize: 12,
-    lineHeight: 1.6,
-  },
-  aiBody: {
-    marginTop: 10,
-    padding: "14px 14px",
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.03)",
-    color: "rgba(232,238,252,0.86)",
-    fontSize: 13,
-    lineHeight: 1.7,
-    whiteSpace: "pre-wrap",
   },
 
   noteBox: {
@@ -1058,7 +864,8 @@ const styles = {
     fontWeight: 900,
     color: "#fff",
     border: "1px solid rgba(255,255,255,0.14)",
-    background: "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
+    background:
+      "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
   },
   bestName: { fontWeight: 900, fontSize: 16 },
   bestSub: { marginTop: 2, fontSize: 12, color: "rgba(232,238,252,0.65)" },
@@ -1070,13 +877,28 @@ const styles = {
     fontSize: 12,
     fontWeight: 900,
   },
-  bestGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, padding: 14 },
-  bestStat: { borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)", padding: 12 },
+  bestGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
+    padding: 14,
+  },
+  bestStat: {
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.03)",
+    padding: 12,
+  },
   bestLabel: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
   bestValue: { marginTop: 6, fontWeight: 900, fontSize: 18 },
 
   rolesWrap: { display: "grid", gap: 12 },
-  roleRow: { display: "grid", gridTemplateColumns: "160px 1fr", gap: 14, alignItems: "center" },
+  roleRow: {
+    display: "grid",
+    gridTemplateColumns: "160px 1fr",
+    gap: 14,
+    alignItems: "center",
+  },
   roleLeft: { display: "grid", gap: 4 },
   roleName: { fontWeight: 900, fontSize: 13 },
   roleMeta: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
@@ -1090,14 +912,38 @@ const styles = {
   roleBarInner: {
     height: "100%",
     borderRadius: 999,
-    background: "linear-gradient(90deg, rgba(124,58,237,0.95), rgba(34,211,238,0.85))",
+    background:
+      "linear-gradient(90deg, rgba(124,58,237,0.95), rgba(34,211,238,0.85))",
   },
 
-  policyBox: { borderRadius: 16, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(0,0,0,0.18)", padding: 14 },
+  policyBox: {
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.18)",
+    padding: 14,
+  },
   policyChips: { display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 },
-  policyChip: { padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", fontSize: 12, fontWeight: 800, color: "rgba(232,238,252,0.88)" },
+  policyChip: {
+    padding: "8px 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.06)",
+    fontSize: 12,
+    fontWeight: 800,
+    color: "rgba(232,238,252,0.88)",
+  },
 
-  footer: { marginTop: 18, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", color: "rgba(232,238,252,0.60)", fontSize: 12, paddingBottom: 10 },
+  footer: {
+    marginTop: 18,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+    color: "rgba(232,238,252,0.60)",
+    fontSize: 12,
+    paddingBottom: 10,
+  },
   footerSmall: { opacity: 0.9 },
   footerLinks: { display: "flex", alignItems: "center", gap: 10 },
   footerLink: { color: "rgba(232,238,252,0.78)", textDecoration: "none" },
