@@ -1,9 +1,9 @@
-// components/Siteheader.js
+// components/SiteHeader.js
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 
-export default function Siteheader() {
+export default function SiteHeader() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
@@ -11,120 +11,75 @@ export default function Siteheader() {
     () => [
       { href: "/", label: "Home" },
       { href: "/analyzer", label: "Analyzer" },
+      { href: "/how-it-works", label: "How it works" },
+      { href: "/about", label: "About" },
       { href: "/terms", label: "Terms" },
       { href: "/privacy", label: "Privacy" },
     ],
     []
   );
 
-  // Close menu on route change
+  // Close mobile menu on route change
   useEffect(() => {
-    const handle = () => setOpen(false);
-    router.events?.on?.("routeChangeStart", handle);
-    return () => router.events?.off?.("routeChangeStart", handle);
+    const close = () => setOpen(false);
+    router.events.on("routeChangeStart", close);
+    return () => router.events.off("routeChangeStart", close);
   }, [router.events]);
-
-  // ESC closes
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    if (open) window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
 
   return (
     <header style={styles.wrap}>
       <div style={styles.inner}>
-        {/* Left: Brand */}
-        <div style={styles.left}>
-          <Link href="/" style={styles.brand} aria-label="Nexio.gg Home">
-            <span style={styles.logoDot} />
-            <span style={styles.brandText}>
-              Nexio<span style={styles.brandTld}>.gg</span>
-            </span>
-          </Link>
+        {/* Brand */}
+        <Link href="/" style={styles.brand}>
+          <span style={styles.logo} />
+          <span>
+            Nexio<span style={{ opacity: 0.7 }}>.gg</span>
+          </span>
+        </Link>
 
-          <span style={styles.badge}>POST-MATCH</span>
-        </div>
-
-        {/* Right: Desktop nav */}
-        <nav style={styles.navDesktop} aria-label="Primary">
-          {nav.map((item) => {
-            const active = router.pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                style={{
-                  ...styles.navLink,
-                  ...(active ? styles.navLinkActive : null),
-                }}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-          <Link href="/analyzer" style={styles.primaryCta}>
+        {/* Desktop nav */}
+        <nav style={styles.nav}>
+          {nav.map((n) => (
+            <Link
+              key={n.href}
+              href={n.href}
+              style={{
+                ...styles.link,
+                ...(router.pathname === n.href ? styles.active : {}),
+              }}
+            >
+              {n.label}
+            </Link>
+          ))}
+          <Link href="/analyzer" style={styles.cta}>
             Open Analyzer
           </Link>
         </nav>
 
-        {/* Mobile hamburger */}
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-label={open ? "Close menu" : "Open menu"}
-          aria-expanded={open}
-          style={styles.burger}
-        >
-          <span style={{ ...styles.bLine, ...(open ? styles.bLineTopOpen : null) }} />
-          <span style={{ ...styles.bLine, ...(open ? styles.bLineMidOpen : null) }} />
-          <span style={{ ...styles.bLine, ...(open ? styles.bLineBotOpen : null) }} />
+        {/* Mobile button */}
+        <button onClick={() => setOpen(!open)} style={styles.burger}>
+          ☰
         </button>
       </div>
 
-      {/* Mobile panel */}
-      {open ? (
-        <>
-          <div style={styles.backdrop} onClick={() => setOpen(false)} />
-          <div style={styles.mobilePanel} role="dialog" aria-label="Menu">
-            <div style={styles.mobileTop}>
-              <div style={styles.mobileTitle}>Menu</div>
-              <button type="button" onClick={() => setOpen(false)} style={styles.closeBtn}>
-                ✕
-              </button>
-            </div>
-
-            <div style={styles.mobileLinks}>
-              {nav.map((item) => {
-                const active = router.pathname === item.href;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    style={{
-                      ...styles.mobileLink,
-                      ...(active ? styles.mobileLinkActive : null),
-                    }}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-
-            <div style={styles.mobileCtas}>
-              <Link href="/analyzer" style={styles.mobilePrimaryCta}>
-                Open Analyzer
-              </Link>
-              <div style={styles.mobileHint}>
-                Nexio.gg is not affiliated with Riot Games.
-              </div>
-            </div>
-          </div>
-        </>
-      ) : null}
+      {/* Mobile menu */}
+      {open && (
+        <div style={styles.mobile}>
+          {nav.map((n) => (
+            <Link
+              key={n.href}
+              href={n.href}
+              onClick={() => setOpen(false)}
+              style={styles.mobileLink}
+            >
+              {n.label}
+            </Link>
+          ))}
+          <Link href="/analyzer" style={styles.mobileCta}>
+            Open Analyzer
+          </Link>
+        </div>
+      )}
     </header>
   );
 }
@@ -134,10 +89,9 @@ const styles = {
     position: "sticky",
     top: 0,
     zIndex: 50,
-    borderBottom: "1px solid rgba(255,255,255,0.10)",
-    background:
-      "linear-gradient(180deg, rgba(7,11,24,0.92), rgba(7,11,24,0.72))",
+    background: "rgba(7,11,24,0.9)",
     backdropFilter: "blur(10px)",
+    borderBottom: "1px solid rgba(255,255,255,0.08)",
   },
   inner: {
     maxWidth: 1120,
@@ -146,204 +100,79 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
   },
-
-  left: { display: "flex", alignItems: "center", gap: 12, minWidth: 0 },
-
   brand: {
-    display: "inline-flex",
-    alignItems: "center",
+    display: "flex",
     gap: 10,
+    alignItems: "center",
     textDecoration: "none",
-    color: "#e8eefc",
-    minWidth: 0,
+    color: "#fff",
+    fontWeight: 900,
+    fontSize: 18,
   },
-  logoDot: {
+  logo: {
     width: 12,
     height: 12,
     borderRadius: 999,
     background:
       "linear-gradient(135deg, rgba(124,58,237,1), rgba(59,130,246,1))",
-    boxShadow: "0 0 0 3px rgba(124,58,237,0.15)",
-    flex: "0 0 auto",
   },
-  brandText: {
-    fontWeight: 950,
-    letterSpacing: -0.4,
-    fontSize: 18,
-    whiteSpace: "nowrap",
-  },
-  brandTld: {
-    color: "rgba(232,238,252,0.75)",
-    fontWeight: 900,
-  },
-
-  badge: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "6px 10px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.06)",
-    color: "rgba(232,238,252,0.82)",
-    fontSize: 11,
-    fontWeight: 900,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    whiteSpace: "nowrap",
-  },
-
-  // Desktop nav (hidden on mobile via media query-ish approach)
-  navDesktop: {
+  nav: {
     display: "flex",
-    alignItems: "center",
     gap: 10,
+    alignItems: "center",
   },
-  navLink: {
+  link: {
+    color: "rgba(255,255,255,0.75)",
     textDecoration: "none",
-    color: "rgba(232,238,252,0.80)",
     fontSize: 13,
     fontWeight: 800,
-    padding: "9px 10px",
-    borderRadius: 12,
-    border: "1px solid transparent",
-    background: "transparent",
-  },
-  navLinkActive: {
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(255,255,255,0.06)",
-    color: "#e8eefc",
-  },
-  primaryCta: {
-    textDecoration: "none",
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: 950,
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background:
-      "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
-    whiteSpace: "nowrap",
-  },
-
-  // Hamburger (only on mobile; we’ll rely on CSS in global to hide/show)
-  burger: {
-    width: 44,
-    height: 40,
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(0,0,0,0.20)",
-    display: "none",
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-    cursor: "pointer",
-    flex: "0 0 auto",
-  },
-  bLine: {
-    position: "absolute",
-    width: 18,
-    height: 2,
-    background: "rgba(232,238,252,0.92)",
-    borderRadius: 999,
-    transition: "transform 180ms ease, opacity 180ms ease",
-  },
-  bLineTopOpen: { transform: "translateY(0px) rotate(45deg)" },
-  bLineMidOpen: { opacity: 0 },
-  bLineBotOpen: { transform: "translateY(0px) rotate(-45deg)" },
-
-  // Mobile overlay
-  backdrop: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.55)",
-    zIndex: 60,
-  },
-  mobilePanel: {
-    position: "fixed",
-    top: 10,
-    left: 10,
-    right: 10,
-    zIndex: 70,
-    borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background:
-      "linear-gradient(180deg, rgba(8,12,26,0.96), rgba(8,12,26,0.92))",
-    boxShadow: "0 30px 120px rgba(0,0,0,0.55)",
-    backdropFilter: "blur(10px)",
-    overflow: "hidden",
-  },
-  mobileTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "14px 14px",
-    borderBottom: "1px solid rgba(255,255,255,0.08)",
-  },
-  mobileTitle: { fontWeight: 950, color: "#e8eefc" },
-  closeBtn: {
-    width: 36,
-    height: 32,
+    padding: "8px 10px",
     borderRadius: 10,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.06)",
-    color: "rgba(232,238,252,0.92)",
-    cursor: "pointer",
+  },
+  active: {
+    background: "rgba(255,255,255,0.08)",
+    color: "#fff",
+  },
+  cta: {
+    marginLeft: 6,
+    padding: "10px 14px",
+    borderRadius: 12,
+    background:
+      "linear-gradient(135deg, rgba(124,58,237,1), rgba(59,130,246,1))",
+    color: "#fff",
     fontWeight: 900,
-  },
-  mobileLinks: {
-    display: "grid",
-    gap: 8,
-    padding: 14,
-  },
-  mobileLink: {
     textDecoration: "none",
-    color: "rgba(232,238,252,0.88)",
-    fontWeight: 900,
-    fontSize: 14,
-    padding: "12px 12px",
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.04)",
+    fontSize: 13,
   },
-  mobileLinkActive: {
-    border: "1px solid rgba(124,58,237,0.35)",
-    background: "rgba(124,58,237,0.10)",
+  burger: {
+    display: "none",
+    background: "transparent",
+    border: "none",
+    color: "#fff",
+    fontSize: 22,
   },
-  mobileCtas: {
-    padding: 14,
-    borderTop: "1px solid rgba(255,255,255,0.08)",
+  mobile: {
     display: "grid",
     gap: 10,
+    padding: 16,
+    background: "rgba(7,11,24,0.97)",
+    borderTop: "1px solid rgba(255,255,255,0.08)",
   },
-  mobilePrimaryCta: {
-    textDecoration: "none",
-    textAlign: "center",
+  mobileLink: {
     color: "#fff",
-    fontWeight: 950,
-    padding: "12px 12px",
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background:
-      "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
+    textDecoration: "none",
+    fontWeight: 900,
   },
-  mobileHint: {
-    fontSize: 12,
-    color: "rgba(232,238,252,0.62)",
-    lineHeight: 1.5,
+  mobileCta: {
+    marginTop: 10,
+    padding: "12px",
+    textAlign: "center",
+    borderRadius: 12,
+    background:
+      "linear-gradient(135deg, rgba(124,58,237,1), rgba(59,130,246,1))",
+    color: "#fff",
+    fontWeight: 900,
+    textDecoration: "none",
   },
 };
-
-/**
- * IMPORTANT:
- * Bu component, mobile/desktop görünürlüğünü global CSS ile kontrol eder.
- * Eğer global CSS’in varsa (styles/globals.css), şunu en alta ekle:
- *
- * @media (max-width: 860px) {
- *   nav[aria-label="Primary"] { display: none !important; }
- *   header button[aria-label="Open menu"],
- *   header button[aria-label="Close menu"] { display: inline-flex !important; }
- * }
- */
