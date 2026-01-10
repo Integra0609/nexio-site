@@ -1,10 +1,26 @@
 // pages/analyzer.js
 import { useEffect, useMemo, useState } from "react";
 
-const SUPABASE_FN_URL =
+/**
+ * ✅ CORE (no AI)
+ * - Run button uses this endpoint
+ */
+const SUPABASE_CORE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_FN_URL ||
   "https://YOUR_PROJECT.supabase.co/functions/v1/get-player-insights";
 
+/**
+ * ✅ AI (separate)
+ * - Generate AI Recap uses this endpoint
+ */
+const SUPABASE_AI_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_AI_FN_URL ||
+  "https://YOUR_PROJECT.supabase.co/functions/v1/get-player-insights-ai";
+
+/**
+ * ✅ Required when Verify JWT = ON OR functions require auth headers
+ * (We send anon key to avoid "missing authorization header")
+ */
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 const regions = [
@@ -47,7 +63,7 @@ function StatCard({ title, value, sub, onShare }) {
         <div style={styles.statTitle}>{title}</div>
         {onShare ? (
           <button type="button" onClick={onShare} style={styles.shareBtn}>
-            ↗ <span style={{ marginLeft: 6 }}>Share</span>
+            ↗️ <span style={{ marginLeft: 6 }}>Share</span>
           </button>
         ) : null}
       </div>
@@ -91,15 +107,57 @@ function RoleBars({ roles }) {
   );
 }
 
+/**
+ * ✅ Local daily limit for AI recap (MVP)
+ * - Later move to backend / auth
+ */
+function getTodayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+}
+function aiLimitKey() {
+  return `nexio_ai_limit_${getTodayKey()}`;
+}
+function readAiCount() {
+  if (typeof window === "undefined") return 0;
+  try {
+    const n = Number(localStorage.getItem(aiLimitKey()) || "0");
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+function writeAiCount(n) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(aiLimitKey(), String(n));
+  } catch {}
+}
+
 export default function Analyzer() {
   const [name, setName] = useState("");
   const [region, setRegion] = useState("tr1");
 
-  const [loading, setLoading] = useState(false);
+  const [loadingCore, setLoadingCore] = useState(false);
+  const [loadingAI, setLoadingAI] = useState(false);
+
   const [error, setError] = useState("");
 
   const [raw, setRaw] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
+
+  const [aiText, setAiText] = useState("");
+  const [aiMeta, setAiMeta] = useState(null);
+  const [aiUpdatedAt, setAiUpdatedAt] = useState(null);
+
+  const [aiCount, setAiCount] = useState(0);
+  const AI_DAILY_LIMIT = 3;
+
+  useEffect(() => {
+    setAiCount(readAiCount());
+  }, []);
 
   // URL -> state (shareable)
   useEffect(() => {
@@ -109,23 +167,15 @@ export default function Analyzer() {
     const r = u.searchParams.get("region");
     if (n) setName(n);
     if (r) setRegion(r);
-    if (n) setTimeout(() => run(n, r || "tr1", { syncUrl: false }), 80);
+
+    // auto-run CORE only (not AI)
+    if (n) setTimeout(() => runCore(n, r || "tr1", { syncUrl: false }), 80);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const parsed = useMemo(() => {
     if (!raw) return null;
-
     const insights = raw.insights || {};
-
-    // ✅ AI Insight: backend hangi key ile döndürürse yakalayalım
-    const ai =
-      insights.ai_insight ||
-      insights.ai_recap ||
-      raw.ai_insight ||
-      raw.ai_recap ||
-      null;
-
     return {
       source: raw.source ?? "LIVE",
       puuid: raw.puuid ?? null,
@@ -135,7 +185,6 @@ export default function Analyzer() {
       roles: Array.isArray(insights.role_distribution)
         ? insights.role_distribution
         : [],
-      aiInsight: typeof ai === "string" ? ai : ai?.text || ai?.summary || null,
     };
   }, [raw]);
 
@@ -183,51 +232,110 @@ export default function Analyzer() {
     }
   };
 
-  const run = async (nArg, rArg, opts = { syncUrl: true }) => {
+  async function fetchJson(url) {
+    if (!SUPABASE_ANON_KEY) {
+      throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_ANON_KEY");
+    }
+
+    const res = await fetch(url, {
+      headers: {
+        authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        apikey: SUPABASE_ANON_KEY,
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || data?.message || `Request failed (${res.status})`);
+    }
+    return data;
+  }
+
+  const runCore = async (nArg, rArg, opts = { syncUrl: true }) => {
     const n = (nArg ?? name).trim();
     const r = (rArg ?? region) || "tr1";
 
     setError("");
     setRaw(null);
+    setUpdatedAt(null);
+
+    // Core run clears AI state (fresh run)
+    setAiText("");
+    setAiMeta(null);
+    setAiUpdatedAt(null);
 
     if (!n) {
       setError("Summoner name required.");
       return;
     }
 
-    if (!SUPABASE_ANON_KEY) {
-      setError("Missing env: NEXT_PUBLIC_SUPABASE_ANON_KEY");
-      return;
-    }
-
-    setLoading(true);
+    setLoadingCore(true);
     try {
-      const url = `${SUPABASE_FN_URL}?name=${encodeURIComponent(
-        n
-      )}&region=${encodeURIComponent(r)}`;
+      const url = `${SUPABASE_CORE_URL}?name=${encodeURIComponent(n)}&region=${encodeURIComponent(
+        r
+      )}`;
 
-      const res = await fetch(url, {
-        headers: {
-          authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          apikey: SUPABASE_ANON_KEY,
-        },
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(
-          data?.error || data?.message || `Request failed (${res.status})`
-        );
-      }
-
+      const data = await fetchJson(url);
       setRaw(data);
       setUpdatedAt(new Date());
       if (opts.syncUrl !== false) syncUrl(n, r);
     } catch (e) {
       setError(e?.message || "Failed to fetch");
     } finally {
-      setLoading(false);
+      setLoadingCore(false);
+    }
+  };
+
+  const runAI = async () => {
+    const n = name.trim();
+    const r = region || "tr1";
+
+    setError("");
+
+    if (!n) {
+      setError("Summoner name required.");
+      return;
+    }
+
+    if (!raw) {
+      setError("Run analysis first (core).");
+      return;
+    }
+
+    // local daily limit
+    const current = readAiCount();
+    if (current >= AI_DAILY_LIMIT) {
+      setError(`AI Recap daily limit reached (${AI_DAILY_LIMIT}/day).`);
+      return;
+    }
+
+    setLoadingAI(true);
+    try {
+      const url = `${SUPABASE_AI_URL}?name=${encodeURIComponent(n)}&region=${encodeURIComponent(
+        r
+      )}`;
+
+      const data = await fetchJson(url);
+
+      const insights = data?.insights || {};
+      const text =
+        insights.ai_insight ||
+        insights.ai_recap ||
+        data.ai_insight ||
+        data.ai_recap ||
+        "";
+
+      setAiText(typeof text === "string" ? text : "");
+      setAiMeta(data?.ai_meta || null);
+      setAiUpdatedAt(new Date());
+
+      const next = current + 1;
+      writeAiCount(next);
+      setAiCount(next);
+    } catch (e) {
+      setError(e?.message || "AI recap failed");
+    } finally {
+      setLoadingAI(false);
     }
   };
 
@@ -235,6 +343,11 @@ export default function Analyzer() {
     setError("");
     setRaw(null);
     setUpdatedAt(null);
+
+    setAiText("");
+    setAiMeta(null);
+    setAiUpdatedAt(null);
+
     setName("");
     setRegion("tr1");
 
@@ -247,7 +360,7 @@ export default function Analyzer() {
   };
 
   const onEnter = (e) => {
-    if (e.key === "Enter") run();
+    if (e.key === "Enter") runCore();
   };
 
   const focus = useMemo(() => {
@@ -258,7 +371,7 @@ export default function Analyzer() {
     } catch {
       return null;
     }
-  }, [raw, updatedAt, error, loading, name, region]);
+  }, [raw, updatedAt, error, loadingCore, loadingAI, name, region, aiText]);
 
   const glow = (key) =>
     focus === key
@@ -268,6 +381,8 @@ export default function Analyzer() {
           borderRadius: 16,
         }
       : null;
+
+  const canRunAI = Boolean(name.trim()) && Boolean(raw) && !loadingAI;
 
   return (
     <main style={styles.page}>
@@ -280,14 +395,12 @@ export default function Analyzer() {
           </div>
 
           <h1 style={styles.h1}>
-            Performance insights for{" "}
-            <span style={styles.gradWord}>esports</span>.
+            Performance insights for <span style={styles.gradWord}>esports</span>.
           </h1>
 
           <p style={styles.lead}>
-            Clean summaries based on recently available public match data.
-            Shareable links included — built for clarity, designed to be
-            policy-aware.
+            Clean summaries based on recently available public match data. Shareable links included —
+            built for clarity, designed to be policy-aware.
           </p>
         </header>
 
@@ -308,31 +421,34 @@ export default function Analyzer() {
 
             <div style={styles.fieldFixed}>
               <label style={styles.label}>Region</label>
-              <select
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-                style={styles.select}
-              >
-                {regions.map((r) => (
-                  <option key={r.value} value={r.value}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
+              <div style={styles.selectWrap}>
+                <select
+                  value={region}
+                  onChange={(e) => setRegion(e.target.value)}
+                  style={styles.select}
+                >
+                  {regions.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+                <span style={styles.selectChevron}>▾</span>
+              </div>
             </div>
 
             <div style={styles.btnFixed}>
               <label style={styles.label}>&nbsp;</label>
               <button
-                onClick={() => run()}
-                disabled={loading}
+                onClick={() => runCore()}
+                disabled={loadingCore}
                 style={{
                   ...styles.runBtn,
-                  opacity: loading ? 0.72 : 1,
-                  cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loadingCore ? 0.72 : 1,
+                  cursor: loadingCore ? "not-allowed" : "pointer",
                 }}
               >
-                {loading ? "Running..." : "Run"}
+                {loadingCore ? "Running..." : "Run"}
               </button>
             </div>
 
@@ -359,7 +475,7 @@ export default function Analyzer() {
                   onClick={() => {
                     setName(p.name);
                     setRegion(p.region);
-                    run(p.name, p.region);
+                    runCore(p.name, p.region);
                   }}
                 >
                   {p.label}
@@ -379,7 +495,7 @@ export default function Analyzer() {
             <div>
               <div style={styles.sectionTitle}>Result</div>
               <div style={styles.sectionSub}>
-                Run an analysis to see results. Copy/share links are included.
+                Run analysis (core) first. AI recap is optional and rate-limited.
               </div>
 
               <div style={styles.metaRow}>
@@ -391,8 +507,7 @@ export default function Analyzer() {
                 </span>
                 <span style={styles.dot}>•</span>
                 <span style={styles.metaItem}>
-                  Source:{" "}
-                  <span style={styles.mono}>{parsed?.source || "—"}</span>
+                  Source: <span style={styles.mono}>{parsed?.source || "—"}</span>
                 </span>
               </div>
             </div>
@@ -469,7 +584,7 @@ export default function Analyzer() {
             </div>
           </div>
 
-          {/* ✅ AI INSIGHT (BETA) */}
+          {/* ✅ AI INSIGHT (BETA) – SEPARATE BUTTON */}
           <div style={{ marginTop: 14 }} />
           <div style={glow("ai")}>
             <div style={styles.aiBox}>
@@ -480,33 +595,68 @@ export default function Analyzer() {
                     <span style={styles.aiBadge}>BETA</span>
                   </div>
                   <div style={styles.aiSub}>
-                    Post-match analysis • Read-only • Shareable
+                    Post-match • Read-only • Rate-limited ({aiCount}/{AI_DAILY_LIMIT} today)
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  style={{
-                    ...styles.copyBtnSmall,
-                    opacity: name.trim() ? 1 : 0.55,
-                    cursor: name.trim() ? "pointer" : "not-allowed",
-                  }}
-                  disabled={!name.trim()}
-                  onClick={async () => {
-                    const ok = await copy(buildCardLink("ai"));
-                    if (!ok) alert("Copy failed.");
-                  }}
-                >
-                  ⧉ Copy link
-                </button>
+                <div style={styles.aiActions}>
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.aiBtn,
+                      opacity: canRunAI ? 1 : 0.55,
+                      cursor: canRunAI ? "pointer" : "not-allowed",
+                    }}
+                    disabled={!canRunAI || loadingAI}
+                    onClick={runAI}
+                    title={!raw ? "Run core analysis first" : ""}
+                  >
+                    {loadingAI ? "Generating..." : "Generate AI recap"}
+                  </button>
+
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.copyBtnSmall,
+                      opacity: name.trim() ? 1 : 0.55,
+                      cursor: name.trim() ? "pointer" : "not-allowed",
+                    }}
+                    disabled={!name.trim()}
+                    onClick={async () => {
+                      const ok = await copy(buildCardLink("ai"));
+                      if (!ok) alert("Copy failed.");
+                    }}
+                  >
+                    ⧉ Copy link
+                  </button>
+                </div>
               </div>
 
               <div style={styles.aiBody}>
-                {parsed?.aiInsight ? (
-                  <div style={styles.aiText}>{parsed.aiInsight}</div>
+                {aiText ? (
+                  <>
+                    <div style={styles.aiText}>{aiText}</div>
+                    <div style={styles.aiMetaRow}>
+                      <span style={styles.aiMetaItem}>
+                        Updated:{" "}
+                        <span style={styles.mono}>
+                          {aiUpdatedAt ? fmtDate(aiUpdatedAt) : "—"}
+                        </span>
+                      </span>
+                      {aiMeta?.confidence ? (
+                        <>
+                          <span style={styles.dot}>•</span>
+                          <span style={styles.aiMetaItem}>
+                            Confidence:{" "}
+                            <span style={styles.mono}>{aiMeta.confidence}</span>
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+                  </>
                 ) : (
                   <div style={styles.aiPlaceholder}>
-                    Run an analysis to generate an AI insight.
+                    Run core analysis, then click <strong>Generate AI recap</strong>.
                   </div>
                 )}
               </div>
@@ -514,25 +664,20 @@ export default function Analyzer() {
           </div>
 
           <div style={styles.noteBox}>
-            <strong>Note:</strong> Post-match analytics only. Nexio.gg provides
-            no real-time assistance, automation, scripting, or gameplay
-            modification.
+            <strong>Note:</strong> Post-match analytics only. Nexio.gg provides no real-time assistance,
+            automation, scripting, or gameplay modification.
           </div>
 
           {/* BEST */}
           <div style={{ marginTop: 18 }}>
             <div style={styles.sectionTitle}>Best champion breakdown</div>
-            <div style={styles.sectionSub}>
-              Compact breakdown from the recent sample.
-            </div>
+            <div style={styles.sectionSub}>Compact breakdown from the recent sample.</div>
 
             {parsed?.best ? (
               <div style={styles.bestBox}>
                 <div style={styles.bestTop}>
                   <div style={styles.bestIcon}>
-                    {String(parsed.best.champion_name || "C")
-                      .slice(0, 1)
-                      .toUpperCase()}
+                    {String(parsed.best.champion_name || "C").slice(0, 1).toUpperCase()}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={styles.bestName}>{parsed.best.champion_name}</div>
@@ -544,25 +689,18 @@ export default function Analyzer() {
                 <div style={styles.bestGrid}>
                   <div style={styles.bestStat}>
                     <div style={styles.bestLabel}>Games</div>
-                    <div style={styles.bestValue}>
-                      {parsed.best.games ?? "—"}
-                    </div>
+                    <div style={styles.bestValue}>{parsed.best.games ?? "—"}</div>
                   </div>
                   <div style={styles.bestStat}>
                     <div style={styles.bestLabel}>Avg KDA</div>
-                    <div style={styles.bestValue}>
-                      {parsed.best.avg_kda ?? "—"}
-                    </div>
+                    <div style={styles.bestValue}>{parsed.best.avg_kda ?? "—"}</div>
                   </div>
                 </div>
               </div>
             ) : (
               <div style={styles.emptyBox}>
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>
-                  Not enough data yet
-                </div>
-                Best champion breakdown will appear after more recent matches are
-                available.
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>Not enough data yet</div>
+                Best champion breakdown will appear after more recent matches are available.
               </div>
             )}
           </div>
@@ -570,9 +708,7 @@ export default function Analyzer() {
           {/* ROLES */}
           <div style={{ marginTop: 18 }}>
             <div style={styles.sectionTitle}>Role distribution</div>
-            <div style={styles.sectionSub}>
-              Based on recent matches — mini bar chart.
-            </div>
+            <div style={styles.sectionSub}>Based on recent matches — mini bar chart.</div>
             <div style={{ marginTop: 10 }}>
               <RoleBars roles={parsed?.roles} />
             </div>
@@ -583,8 +719,7 @@ export default function Analyzer() {
             <div style={styles.policyBox}>
               <div style={styles.sectionTitle}>Policy & disclaimer</div>
               <div style={styles.sectionSub}>
-                Nexio.gg is not affiliated with, endorsed, sponsored, or approved
-                by Riot Games.
+                Nexio.gg is not affiliated with, endorsed, sponsored, or approved by Riot Games.
               </div>
 
               <div style={styles.policyChips}>
@@ -606,7 +741,7 @@ export default function Analyzer() {
         </section>
 
         <footer style={styles.footer}>
-          <div style={styles.footerSmall}>© 2026 Nexio.gg</div>
+          <div style={styles.footerSmall}>©️ 2026 Nexio.gg</div>
           <div style={styles.footerLinks}>
             <a href="/" style={styles.footerLink}>
               Home
@@ -669,12 +804,7 @@ const styles = {
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
   },
-  lead: {
-    margin: 0,
-    maxWidth: 860,
-    color: "rgba(232,238,252,0.72)",
-    lineHeight: 1.6,
-  },
+  lead: { margin: 0, maxWidth: 860, color: "rgba(232,238,252,0.72)", lineHeight: 1.6 },
 
   card: {
     marginTop: 18,
@@ -686,24 +816,14 @@ const styles = {
     backdropFilter: "blur(10px)",
   },
 
-  // ✅ OVERLAP FIX
-  formRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 12,
-    alignItems: "flex-end",
-  },
-  fieldGrow: { flex: "1 1 520px", minWidth: 320 },
-  fieldFixed: { flex: "0 0 280px", minWidth: 240 },
+  // ✅ Responsive form
+  formRow: { display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" },
+  // Summoner a bit narrower
+  fieldGrow: { flex: "1 1 420px", minWidth: 260 },
+  fieldFixed: { flex: "0 0 260px", minWidth: 220 },
   btnFixed: { flex: "0 0 180px", minWidth: 160 },
 
-  label: {
-    display: "block",
-    fontSize: 12,
-    color: "rgba(232,238,252,0.75)",
-    marginBottom: 6,
-    fontWeight: 800,
-  },
+  label: { display: "block", fontSize: 12, color: "rgba(232,238,252,0.75)", marginBottom: 6, fontWeight: 800 },
   input: {
     width: "100%",
     boxSizing: "border-box",
@@ -714,10 +834,21 @@ const styles = {
     color: "#e8eefc",
     outline: "none",
   },
+
+  selectWrap: { position: "relative" },
+  selectChevron: {
+    position: "absolute",
+    right: 12,
+    top: "50%",
+    transform: "translateY(-50%)",
+    opacity: 0.85,
+    fontSize: 12,
+    pointerEvents: "none",
+  },
   select: {
     width: "100%",
     boxSizing: "border-box",
-    padding: "12px 12px",
+    padding: "12px 34px 12px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,0.25)",
@@ -727,6 +858,7 @@ const styles = {
     WebkitAppearance: "none",
     MozAppearance: "none",
   },
+
   runBtn: {
     width: "100%",
     boxSizing: "border-box",
@@ -763,11 +895,7 @@ const styles = {
   },
   quickLeft: { display: "flex", alignItems: "center", gap: 8 },
   quickIcon: { opacity: 0.9 },
-  quickLabel: {
-    fontSize: 12,
-    fontWeight: 900,
-    color: "rgba(232,238,252,0.75)",
-  },
+  quickLabel: { fontSize: 12, fontWeight: 900, color: "rgba(232,238,252,0.75)" },
   quickChips: { display: "flex", gap: 10, flexWrap: "wrap" },
   chipBtn: {
     border: "1px solid rgba(255,255,255,0.12)",
@@ -843,17 +971,8 @@ const styles = {
     background: "rgba(255,255,255,0.03)",
     padding: 14,
   },
-  statTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  statTitle: {
-    fontSize: 12,
-    color: "rgba(232,238,252,0.72)",
-    fontWeight: 900,
-  },
+  statTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  statTitle: { fontSize: 12, color: "rgba(232,238,252,0.72)", fontWeight: 900 },
   statValue: { fontSize: 26, fontWeight: 900, marginTop: 8 },
   statSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.65)" },
   shareBtn: {
@@ -895,6 +1014,16 @@ const styles = {
     color: "rgba(232,238,252,0.88)",
   },
   aiSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.70)" },
+  aiActions: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
+  aiBtn: {
+    padding: "10px 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background:
+      "linear-gradient(135deg, rgba(124,58,237,0.55), rgba(59,130,246,0.45))",
+    color: "#fff",
+    fontWeight: 900,
+  },
   aiBody: { marginTop: 10 },
   aiText: {
     whiteSpace: "pre-wrap",
@@ -911,6 +1040,15 @@ const styles = {
     fontSize: 12,
     lineHeight: 1.6,
   },
+  aiMetaRow: {
+    marginTop: 10,
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    color: "rgba(232,238,252,0.62)",
+    fontSize: 12,
+  },
+  aiMetaItem: { display: "inline-flex", gap: 6, alignItems: "center" },
 
   noteBox: {
     marginTop: 12,
