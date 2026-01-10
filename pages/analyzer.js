@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 const SUPABASE_FN_URL =
   process.env.NEXT_PUBLIC_SUPABASE_FN_URL ||
-  "https://lpoxlbbcmpxbfpfrufvf.supabase.co/functions/v1/get-player-insights";
+  "https://YOUR_PROJECT.supabase.co/functions/v1/get-player-insights";
 
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
@@ -36,7 +36,7 @@ function fmtDate(d) {
       minute: "2-digit",
     }).format(d);
   } catch {
-    return d.toISOString();
+    return "—";
   }
 }
 
@@ -47,7 +47,7 @@ function StatCard({ title, value, sub, onShare }) {
         <div style={styles.statTitle}>{title}</div>
         {onShare ? (
           <button type="button" onClick={onShare} style={styles.shareBtn}>
-            ↗️ <span style={{ marginLeft: 6 }}>Share</span>
+            ↗ <span style={{ marginLeft: 6 }}>Share</span>
           </button>
         ) : null}
       </div>
@@ -62,7 +62,7 @@ function RoleBars({ roles }) {
     return (
       <div style={styles.emptyBox}>
         <div style={{ fontWeight: 900, marginBottom: 6 }}>No role data yet</div>
-        Run analysis to see role distribution.
+        Run an analysis to see role distribution.
       </div>
     );
   }
@@ -80,6 +80,7 @@ function RoleBars({ roles }) {
                 {r.count ?? 0} match • {pct}%
               </div>
             </div>
+
             <div style={styles.roleBarOuter}>
               <div style={{ ...styles.roleBarInner, width: `${pct}%` }} />
             </div>
@@ -100,11 +101,6 @@ export default function Analyzer() {
   const [raw, setRaw] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
 
-  const authOn = Boolean(SUPABASE_ANON_KEY && SUPABASE_ANON_KEY.length > 20);
-  const maskedKey = authOn
-    ? `${SUPABASE_ANON_KEY.slice(0, 8)}…${SUPABASE_ANON_KEY.slice(-6)}`
-    : "—";
-
   // URL -> state (shareable)
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -113,16 +109,24 @@ export default function Analyzer() {
     const r = u.searchParams.get("region");
     if (n) setName(n);
     if (r) setRegion(r);
-
-    if (n) setTimeout(() => run(n, r || "tr1", { syncUrl: false }), 60);
+    if (n) setTimeout(() => run(n, r || "tr1", { syncUrl: false }), 80);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const parsed = useMemo(() => {
     if (!raw) return null;
+
     const insights = raw.insights || {};
+
+    // ✅ AI Insight: backend hangi key ile döndürürse yakalayalım
+    const ai =
+      insights.ai_insight ||
+      insights.ai_recap ||
+      raw.ai_insight ||
+      raw.ai_recap ||
+      null;
+
     return {
-      ok: raw.ok ?? true,
       source: raw.source ?? "LIVE",
       puuid: raw.puuid ?? null,
       sampleSize: insights.sample_size ?? null,
@@ -131,7 +135,7 @@ export default function Analyzer() {
       roles: Array.isArray(insights.role_distribution)
         ? insights.role_distribution
         : [],
-      aiRecap: raw.ai_recap ?? null, // ileride
+      aiInsight: typeof ai === "string" ? ai : ai?.text || ai?.summary || null,
     };
   }, [raw]);
 
@@ -191,10 +195,8 @@ export default function Analyzer() {
       return;
     }
 
-    if (!authOn) {
-      setError(
-        "Supabase anon key missing. Add NEXT_PUBLIC_SUPABASE_ANON_KEY to Vercel and redeploy."
-      );
+    if (!SUPABASE_ANON_KEY) {
+      setError("Missing env: NEXT_PUBLIC_SUPABASE_ANON_KEY");
       return;
     }
 
@@ -204,13 +206,13 @@ export default function Analyzer() {
         n
       )}&region=${encodeURIComponent(r)}`;
 
-      // ✅ IMPORTANT: Supabase Edge Function expects auth headers
-      const headers = {
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        apikey: SUPABASE_ANON_KEY,
-      };
+      const res = await fetch(url, {
+        headers: {
+          authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          apikey: SUPABASE_ANON_KEY,
+        },
+      });
 
-      const res = await fetch(url, { headers });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -275,33 +277,22 @@ export default function Analyzer() {
             <span style={styles.badge}>ANALYZER</span>
             <span style={styles.badgeSoft}>Post-match only</span>
             <span style={styles.badgeSoft}>Policy-aware</span>
-
-            {/* mini debug */}
-            <span
-              style={{
-                ...styles.badgeSoft,
-                borderColor: authOn
-                  ? "rgba(34,197,94,0.35)"
-                  : "rgba(239,68,68,0.35)",
-              }}
-              title={authOn ? maskedKey : "Missing NEXT_PUBLIC_SUPABASE_ANON_KEY"}
-            >
-              Auth: {authOn ? "ON" : "OFF"}
-            </span>
           </div>
 
           <h1 style={styles.h1}>
-            Performance insights for <span style={styles.gradWord}>esports</span>.
+            Performance insights for{" "}
+            <span style={styles.gradWord}>esports</span>.
           </h1>
 
           <p style={styles.lead}>
-            Clean summaries based on recently available public match data. Shareable
-            links included — built for clarity, designed to be policy-aware.
+            Clean summaries based on recently available public match data.
+            Shareable links included — built for clarity, designed to be
+            policy-aware.
           </p>
         </header>
 
         <section style={styles.card}>
-          {/* ✅ FORM: overlap yok (flex-wrap) */}
+          {/* ✅ FORM: overlap yok */}
           <div style={styles.formRow}>
             <div style={styles.fieldGrow}>
               <label style={styles.label}>Summoner name</label>
@@ -337,7 +328,7 @@ export default function Analyzer() {
                 disabled={loading}
                 style={{
                   ...styles.runBtn,
-                  opacity: loading ? 0.7 : 1,
+                  opacity: loading ? 0.72 : 1,
                   cursor: loading ? "not-allowed" : "pointer",
                 }}
               >
@@ -383,12 +374,14 @@ export default function Analyzer() {
             </div>
           ) : null}
 
+          {/* RESULT HEADER */}
           <div style={styles.resultHeader}>
             <div>
               <div style={styles.sectionTitle}>Result</div>
               <div style={styles.sectionSub}>
                 Run an analysis to see results. Copy/share links are included.
               </div>
+
               <div style={styles.metaRow}>
                 <span style={styles.metaItem}>
                   Last updated:{" "}
@@ -408,7 +401,7 @@ export default function Analyzer() {
               type="button"
               style={{
                 ...styles.copyBtn,
-                opacity: name.trim() ? 1 : 0.6,
+                opacity: name.trim() ? 1 : 0.55,
                 cursor: name.trim() ? "pointer" : "not-allowed",
               }}
               disabled={!name.trim()}
@@ -421,6 +414,7 @@ export default function Analyzer() {
             </button>
           </div>
 
+          {/* STATS */}
           <div style={styles.grid}>
             <div style={glow("sample")}>
               <StatCard
@@ -475,11 +469,57 @@ export default function Analyzer() {
             </div>
           </div>
 
-          <div style={styles.noteBox}>
-            <strong>Note:</strong> Post-match analytics only. Nexio.gg provides no
-            real-time assistance, automation, scripting, or gameplay modification.
+          {/* ✅ AI INSIGHT (BETA) */}
+          <div style={{ marginTop: 14 }} />
+          <div style={glow("ai")}>
+            <div style={styles.aiBox}>
+              <div style={styles.aiTop}>
+                <div>
+                  <div style={styles.aiTitleRow}>
+                    <div style={styles.aiTitle}>AI Insight</div>
+                    <span style={styles.aiBadge}>BETA</span>
+                  </div>
+                  <div style={styles.aiSub}>
+                    Post-match analysis • Read-only • Shareable
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  style={{
+                    ...styles.copyBtnSmall,
+                    opacity: name.trim() ? 1 : 0.55,
+                    cursor: name.trim() ? "pointer" : "not-allowed",
+                  }}
+                  disabled={!name.trim()}
+                  onClick={async () => {
+                    const ok = await copy(buildCardLink("ai"));
+                    if (!ok) alert("Copy failed.");
+                  }}
+                >
+                  ⧉ Copy link
+                </button>
+              </div>
+
+              <div style={styles.aiBody}>
+                {parsed?.aiInsight ? (
+                  <div style={styles.aiText}>{parsed.aiInsight}</div>
+                ) : (
+                  <div style={styles.aiPlaceholder}>
+                    Run an analysis to generate an AI insight.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
+          <div style={styles.noteBox}>
+            <strong>Note:</strong> Post-match analytics only. Nexio.gg provides
+            no real-time assistance, automation, scripting, or gameplay
+            modification.
+          </div>
+
+          {/* BEST */}
           <div style={{ marginTop: 18 }}>
             <div style={styles.sectionTitle}>Best champion breakdown</div>
             <div style={styles.sectionSub}>
@@ -527,6 +567,7 @@ export default function Analyzer() {
             )}
           </div>
 
+          {/* ROLES */}
           <div style={{ marginTop: 18 }}>
             <div style={styles.sectionTitle}>Role distribution</div>
             <div style={styles.sectionSub}>
@@ -537,6 +578,7 @@ export default function Analyzer() {
             </div>
           </div>
 
+          {/* POLICY */}
           <div style={{ marginTop: 18 }}>
             <div style={styles.policyBox}>
               <div style={styles.sectionTitle}>Policy & disclaimer</div>
@@ -544,6 +586,7 @@ export default function Analyzer() {
                 Nexio.gg is not affiliated with, endorsed, sponsored, or approved
                 by Riot Games.
               </div>
+
               <div style={styles.policyChips}>
                 {[
                   "Post-match only",
@@ -563,7 +606,7 @@ export default function Analyzer() {
         </section>
 
         <footer style={styles.footer}>
-          <div style={styles.footerSmall}>©️ 2026 Nexio.gg</div>
+          <div style={styles.footerSmall}>© 2026 Nexio.gg</div>
           <div style={styles.footerLinks}>
             <a href="/" style={styles.footerLink}>
               Home
@@ -628,7 +671,7 @@ const styles = {
   },
   lead: {
     margin: 0,
-    maxWidth: 820,
+    maxWidth: 860,
     color: "rgba(232,238,252,0.72)",
     lineHeight: 1.6,
   },
@@ -643,16 +686,15 @@ const styles = {
     backdropFilter: "blur(10px)",
   },
 
-  // ✅ Overlap yok: flex + wrap
+  // ✅ OVERLAP FIX
   formRow: {
     display: "flex",
     flexWrap: "wrap",
     gap: 12,
     alignItems: "flex-end",
   },
-  // Summoner daha dar olsun (isteğin buydu)
-  fieldGrow: { flex: "1 1 420px", minWidth: 260 },
-  fieldFixed: { flex: "0 0 240px", minWidth: 220 },
+  fieldGrow: { flex: "1 1 520px", minWidth: 320 },
+  fieldFixed: { flex: "0 0 280px", minWidth: 240 },
   btnFixed: { flex: "0 0 180px", minWidth: 160 },
 
   label: {
@@ -660,6 +702,7 @@ const styles = {
     fontSize: 12,
     color: "rgba(232,238,252,0.75)",
     marginBottom: 6,
+    fontWeight: 800,
   },
   input: {
     width: "100%",
@@ -680,6 +723,9 @@ const styles = {
     background: "rgba(0,0,0,0.25)",
     color: "#e8eefc",
     outline: "none",
+    appearance: "none",
+    WebkitAppearance: "none",
+    MozAppearance: "none",
   },
   runBtn: {
     width: "100%",
@@ -754,11 +800,7 @@ const styles = {
     flexWrap: "wrap",
   },
   sectionTitle: { fontWeight: 900, fontSize: 13 },
-  sectionSub: {
-    marginTop: 6,
-    color: "rgba(232,238,252,0.70)",
-    fontSize: 12,
-  },
+  sectionSub: { marginTop: 6, color: "rgba(232,238,252,0.70)", fontSize: 12 },
   metaRow: {
     marginTop: 10,
     display: "flex",
@@ -774,6 +816,14 @@ const styles = {
 
   copyBtn: {
     padding: "10px 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(0,0,0,0.22)",
+    color: "rgba(232,238,252,0.92)",
+    fontWeight: 900,
+  },
+  copyBtnSmall: {
+    padding: "9px 12px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,0.22)",
@@ -817,6 +867,49 @@ const styles = {
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
+  },
+
+  // ✅ AI
+  aiBox: {
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.18)",
+    padding: 14,
+  },
+  aiTop: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  aiTitleRow: { display: "flex", alignItems: "center", gap: 10 },
+  aiTitle: { fontWeight: 900, fontSize: 13 },
+  aiBadge: {
+    padding: "5px 9px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.06)",
+    fontSize: 11,
+    fontWeight: 900,
+    color: "rgba(232,238,252,0.88)",
+  },
+  aiSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.70)" },
+  aiBody: { marginTop: 10 },
+  aiText: {
+    whiteSpace: "pre-wrap",
+    lineHeight: 1.7,
+    color: "rgba(232,238,252,0.86)",
+    fontSize: 13,
+  },
+  aiPlaceholder: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: "1px dashed rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,0.03)",
+    color: "rgba(232,238,252,0.78)",
+    fontSize: 12,
+    lineHeight: 1.6,
   },
 
   noteBox: {
