@@ -46,7 +46,8 @@ export default function App({ Component, pageProps }) {
         .appMain {
           flex: 1;
           min-height: 0;
-        }
+          padding-top: 14px; /* sticky header overlap fix */
+}
       `}</style>
     </>
   );
