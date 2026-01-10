@@ -17,14 +17,12 @@ export default function SiteHeader() {
     []
   );
 
-  // Close menu on route change
   useEffect(() => {
     const handle = () => setOpen(false);
     router.events?.on?.("routeChangeStart", handle);
     return () => router.events?.off?.("routeChangeStart", handle);
   }, [router.events]);
 
-  // ESC closes
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") setOpen(false);
@@ -36,7 +34,6 @@ export default function SiteHeader() {
   return (
     <header style={styles.wrap}>
       <div style={styles.inner}>
-        {/* Left: Brand */}
         <div style={styles.left}>
           <Link href="/" style={styles.brand} aria-label="Nexio.gg Home">
             <span style={styles.logoDot} />
@@ -48,7 +45,6 @@ export default function SiteHeader() {
           <span style={styles.badge}>POST-MATCH</span>
         </div>
 
-        {/* Right: Desktop nav */}
         <nav style={styles.navDesktop} aria-label="Primary">
           {nav.map((item) => {
             const active = router.pathname === item.href;
@@ -66,17 +62,12 @@ export default function SiteHeader() {
             );
           })}
 
-          {/* CTA SLOT (future auth) */}
-          <button
-            type="button"
-            style={styles.authCta}
-            onClick={() => alert("Login is coming soon.")}
-          >
+          {/* CTA: ileride login */}
+          <Link href="/analyzer" style={styles.primaryCta}>
             Login (soon)
-          </button>
+          </Link>
         </nav>
 
-        {/* Mobile hamburger */}
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -85,30 +76,17 @@ export default function SiteHeader() {
           style={styles.burger}
         >
           <span
-            style={{
-              ...styles.bLine,
-              ...(open ? styles.bLineTopOpen : null),
-              top: 14,
-            }}
+            style={{ ...styles.bLine, ...(open ? styles.bLineTopOpen : null) }}
           />
           <span
-            style={{
-              ...styles.bLine,
-              ...(open ? styles.bLineMidOpen : null),
-              top: 19,
-            }}
+            style={{ ...styles.bLine, ...(open ? styles.bLineMidOpen : null) }}
           />
           <span
-            style={{
-              ...styles.bLine,
-              ...(open ? styles.bLineBotOpen : null),
-              top: 24,
-            }}
+            style={{ ...styles.bLine, ...(open ? styles.bLineBotOpen : null) }}
           />
         </button>
       </div>
 
-      {/* Mobile panel */}
       {open ? (
         <>
           <div style={styles.backdrop} onClick={() => setOpen(false)} />
@@ -143,14 +121,9 @@ export default function SiteHeader() {
             </div>
 
             <div style={styles.mobileCtas}>
-              <button
-                type="button"
-                style={styles.mobileAuthCta}
-                onClick={() => alert("Login is coming soon.")}
-              >
+              <Link href="/analyzer" style={styles.mobilePrimaryCta}>
                 Login (soon)
-              </button>
-
+              </Link>
               <div style={styles.mobileHint}>
                 Nexio.gg is not affiliated with Riot Games.
               </div>
@@ -158,21 +131,6 @@ export default function SiteHeader() {
           </div>
         </>
       ) : null}
-
-      {/* Responsive visibility rules (no globals.css needed) */}
-      <style jsx>{`
-        @media (max-width: 860px) {
-          nav[aria-label="Primary"] {
-            display: none !important;
-          }
-        }
-        @media (max-width: 860px) {
-          button[aria-label="Open menu"],
-          button[aria-label="Close menu"] {
-            display: inline-flex !important;
-          }
-        }
-      `}</style>
     </header>
   );
 }
@@ -196,7 +154,6 @@ const styles = {
     justifyContent: "space-between",
     gap: 12,
   },
-
   left: { display: "flex", alignItems: "center", gap: 12, minWidth: 0 },
 
   brand: {
@@ -222,7 +179,10 @@ const styles = {
     fontSize: 18,
     whiteSpace: "nowrap",
   },
-  brandTld: { color: "rgba(232,238,252,0.75)", fontWeight: 900 },
+  brandTld: {
+    color: "rgba(232,238,252,0.75)",
+    fontWeight: 900,
+  },
 
   badge: {
     display: "inline-flex",
@@ -239,7 +199,11 @@ const styles = {
     whiteSpace: "nowrap",
   },
 
-  navDesktop: { display: "flex", alignItems: "center", gap: 10 },
+  navDesktop: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
   navLink: {
     textDecoration: "none",
     color: "rgba(232,238,252,0.80)",
@@ -255,18 +219,16 @@ const styles = {
     background: "rgba(255,255,255,0.06)",
     color: "#e8eefc",
   },
-
-  authCta: {
-    appearance: "none",
-    WebkitAppearance: "none",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(255,255,255,0.06)",
-    color: "#e8eefc",
-    padding: "10px 12px",
+  primaryCta: {
+    textDecoration: "none",
+    color: "#fff",
     fontSize: 13,
     fontWeight: 950,
-    cursor: "pointer",
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background:
+      "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
     whiteSpace: "nowrap",
   },
 
@@ -285,16 +247,15 @@ const styles = {
   },
   bLine: {
     position: "absolute",
-    left: 13,
     width: 18,
     height: 2,
     background: "rgba(232,238,252,0.92)",
     borderRadius: 999,
     transition: "transform 180ms ease, opacity 180ms ease",
   },
-  bLineTopOpen: { transform: "translateY(5px) rotate(45deg)" },
+  bLineTopOpen: { transform: "translateY(0px) rotate(45deg)" },
   bLineMidOpen: { opacity: 0 },
-  bLineBotOpen: { transform: "translateY(-5px) rotate(-45deg)" },
+  bLineBotOpen: { transform: "translateY(0px) rotate(-45deg)" },
 
   backdrop: {
     position: "fixed",
@@ -355,17 +316,16 @@ const styles = {
     display: "grid",
     gap: 10,
   },
-  mobileAuthCta: {
-    appearance: "none",
-    WebkitAppearance: "none",
+  mobilePrimaryCta: {
+    textDecoration: "none",
+    textAlign: "center",
+    color: "#fff",
+    fontWeight: 950,
+    padding: "12px 12px",
     borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.18)",
     background:
       "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
-    color: "#fff",
-    padding: "12px 12px",
-    fontWeight: 950,
-    cursor: "pointer",
   },
   mobileHint: {
     fontSize: 12,
