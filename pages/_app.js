@@ -1,8 +1,10 @@
 // pages/_app.js
+import Siteheader from "../components/Siteheader";
 
 export default function App({ Component, pageProps }) {
   return (
     <>
+      {/* Global responsive + theme fixes */}
       <style jsx global>{`
         * {
           box-sizing: border-box;
@@ -17,10 +19,6 @@ export default function App({ Component, pageProps }) {
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
             Helvetica, Arial, sans-serif;
         }
-
-        /* =========================
-           HEADER RESPONSIVE RULES
-           ========================= */
 
         /* ✅ DESKTOP / WEB: navbar kesin görünsün */
         @media (min-width: 861px) {
@@ -49,17 +47,16 @@ export default function App({ Component, pageProps }) {
             max-width: 100vw;
             overflow-x: hidden;
           }
+
+          /* iOS zoom bug fix */
+          input,
+          select,
+          textarea {
+            font-size: 16px;
+          }
         }
 
-        /* =========================
-           FORM ELEMENT POLISH
-           ========================= */
-        input,
-        select,
-        button {
-          font-family: inherit;
-        }
-
+        /* ✅ Select dropdown tonları (premium dark) */
         select {
           background-color: rgba(0, 0, 0, 0.35);
           color: #e8eefc;
@@ -69,17 +66,12 @@ export default function App({ Component, pageProps }) {
           background: #0b1020;
           color: #e8eefc;
         }
-
-        /* iOS zoom bug fix */
-        @media (max-width: 860px) {
-          input,
-          select,
-          textarea {
-            font-size: 16px;
-          }
-        }
       `}</style>
 
+      {/* ✅ Header tekrar burada */}
+      <Siteheader />
+
+      {/* Page */}
       <Component {...pageProps} />
     </>
   );
