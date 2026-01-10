@@ -3,11 +3,7 @@
 export default function App({ Component, pageProps }) {
   return (
     <>
-      {/* ===============================
-          GLOBAL STYLES (MOBILE FIXES)
-          =============================== */}
       <style jsx global>{`
-        /* Genel reset / güvenli varsayılanlar */
         * {
           box-sizing: border-box;
         }
@@ -18,35 +14,46 @@ export default function App({ Component, pageProps }) {
           padding: 0;
           background: #070b18;
           color: #e8eefc;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-            Roboto, Helvetica, Arial, sans-serif;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+            Helvetica, Arial, sans-serif;
         }
 
-        /* -------------------------------
-           MOBILE HEADER OVERFLOW FIX
-           ------------------------------- */
+        /* =========================
+           HEADER RESPONSIVE RULES
+           ========================= */
+
+        /* ✅ DESKTOP / WEB: navbar kesin görünsün */
+        @media (min-width: 861px) {
+          nav[aria-label="Primary"] {
+            display: flex !important;
+          }
+
+          header button[aria-label="Open menu"],
+          header button[aria-label="Close menu"] {
+            display: none !important;
+          }
+        }
+
+        /* ✅ MOBILE: navbar gizli, hamburger açık */
         @media (max-width: 860px) {
-          /* Desktop navbar'ı gizle */
           nav[aria-label="Primary"] {
             display: none !important;
           }
 
-          /* Hamburger butonlar görünür */
           header button[aria-label="Open menu"],
           header button[aria-label="Close menu"] {
             display: inline-flex !important;
           }
 
-          /* Header taşmasını engelle */
           header {
             max-width: 100vw;
             overflow-x: hidden;
           }
         }
 
-        /* -------------------------------
-           FORM ELEMENTS MOBILE POLISH
-           ------------------------------- */
+        /* =========================
+           FORM ELEMENT POLISH
+           ========================= */
         input,
         select,
         button {
@@ -73,7 +80,6 @@ export default function App({ Component, pageProps }) {
         }
       `}</style>
 
-      {/* APP */}
       <Component {...pageProps} />
     </>
   );
