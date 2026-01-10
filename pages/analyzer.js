@@ -45,7 +45,7 @@ function StatCard({ title, value, sub, onShare }) {
         <div style={styles.statTitle}>{title}</div>
         {onShare ? (
           <button type="button" onClick={onShare} style={styles.shareBtn}>
-            ↗ <span style={{ marginLeft: 6 }}>Share</span>
+            ↗️ <span style={{ marginLeft: 6 }}>Share</span>
           </button>
         ) : null}
       </div>
@@ -88,6 +88,81 @@ function RoleBars({ roles }) {
   );
 }
 
+function AIRecapCard({ raw, onCopyLink }) {
+  // Expected shape:
+  // raw.ai_recap = { recap: { summary, strengths[], improvements[], key_factors[] }, meta: {...} }
+  const r = raw?.ai_recap?.recap || null;
+  const meta = raw?.ai_recap?.meta || null;
+
+  return (
+    <div style={styles.aiCard}>
+      <div style={styles.aiHeader}>
+        <div>
+          <div style={styles.aiTitle}>
+            AI Recap <span style={styles.beta}>BETA</span>
+          </div>
+          <div style={styles.aiSub}>Post-match analysis • Read-only • Shareable</div>
+        </div>
+
+        <button type="button" style={styles.copyBtnSmall} onClick={onCopyLink}>
+          ⧉ Copy link
+        </button>
+      </div>
+
+      {!raw ? (
+        <div style={styles.aiLoading}>Run an analysis to generate an AI recap.</div>
+      ) : r ? (
+        <div style={styles.aiBody}>
+          <div style={styles.aiMetaLine}>
+            <span style={styles.metaItem}>
+              Source: <span style={styles.mono}>{meta?.source || "ai"}</span>
+            </span>
+            <span style={styles.dot}>•</span>
+            <span style={styles.metaItem}>
+              Model: <span style={styles.mono}>{meta?.model || "—"}</span>
+            </span>
+          </div>
+
+          <p style={styles.aiSummary}>{r.summary}</p>
+
+          <div style={styles.aiGrid}>
+            <div style={styles.aiPanel}>
+              <div style={styles.aiLabel}>Strengths</div>
+              <ul style={styles.aiList}>
+                {(r.strengths || []).slice(0, 2).map((x, i) => (
+                  <li key={i}>{x}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div style={styles.aiPanel}>
+              <div style={styles.aiLabel}>Improvement areas</div>
+              <ul style={styles.aiList}>
+                {(r.improvements || []).slice(0, 2).map((x, i) => (
+                  <li key={i}>{x}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <div style={styles.aiLabel}>Key factors</div>
+            <ul style={styles.aiListInline}>
+              {(r.key_factors || []).slice(0, 2).map((k, i) => (
+                <li key={i}>{k}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : (
+        <div style={styles.aiLoading}>
+          Generating recap… (If this stays here, your function still returns mock/no AI yet.)
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Analyzer() {
   const [name, setName] = useState("");
   const [region, setRegion] = useState("tr1");
@@ -107,6 +182,7 @@ export default function Analyzer() {
     if (n) setName(n);
     if (r) setRegion(r);
 
+    // auto-run for share links
     if (n) setTimeout(() => run(n, r || "tr1", { syncUrl: false }), 60);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -189,6 +265,8 @@ export default function Analyzer() {
         n
       )}&region=${encodeURIComponent(r)}`;
 
+      // NOTE: For now we do plain fetch (public function).
+      // Later we will add a server-side proxy or secret/JWT for production security.
       const res = await fetch(url);
       const data = await res.json().catch(() => ({}));
 
@@ -235,7 +313,8 @@ export default function Analyzer() {
     } catch {
       return null;
     }
-  }, [raw, updatedAt, error, loading, name, region]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raw, updatedAt]);
 
   const glow = (key) =>
     focus === key
@@ -257,11 +336,14 @@ export default function Analyzer() {
           </div>
 
           <h1 style={styles.h1}>
-            Performance insights for <span style={styles.gradWord}>esports</span>.
+            Performance insights for{" "}
+            <span style={styles.gradWord}>esports</span>.
           </h1>
 
           <p style={styles.lead}>
-            Clean summaries based on recently available public match data. Shareable links included — built for clarity, designed to be policy-aware.
+            Clean summaries based on recently available public match data.
+            Shareable links included — built for clarity, designed to be
+            policy-aware.
           </p>
         </header>
 
@@ -363,7 +445,8 @@ export default function Analyzer() {
                 </span>
                 <span style={styles.dot}>•</span>
                 <span style={styles.metaItem}>
-                  Source: <span style={styles.mono}>{parsed?.source || "—"}</span>
+                  Source:{" "}
+                  <span style={styles.mono}>{parsed?.source || "—"}</span>
                 </span>
               </div>
             </div>
@@ -439,22 +522,41 @@ export default function Analyzer() {
             </div>
           </div>
 
+          {/* ✅ AI Recap v1 (UI) */}
+          <div style={{ marginTop: 16 }}>
+            <AIRecapCard
+              raw={raw}
+              onCopyLink={async () => {
+                const ok = await copy(buildCardLink("ai"));
+                if (!ok) alert("Copy failed.");
+              }}
+            />
+          </div>
+
           <div style={styles.noteBox}>
-            <strong>Note:</strong> Post-match analytics only. Nexio.gg provides no real-time assistance, automation, scripting, or gameplay modification.
+            <strong>Note:</strong> Post-match analytics only. Nexio.gg provides no
+            real-time assistance, automation, scripting, or gameplay
+            modification.
           </div>
 
           <div style={{ marginTop: 18 }}>
             <div style={styles.sectionTitle}>Best champion breakdown</div>
-            <div style={styles.sectionSub}>Compact breakdown from the recent sample.</div>
+            <div style={styles.sectionSub}>
+              Compact breakdown from the recent sample.
+            </div>
 
             {parsed?.best ? (
               <div style={styles.bestBox}>
                 <div style={styles.bestTop}>
                   <div style={styles.bestIcon}>
-                    {String(parsed.best.champion_name || "C").slice(0, 1).toUpperCase()}
+                    {String(parsed.best.champion_name || "C")
+                      .slice(0, 1)
+                      .toUpperCase()}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={styles.bestName}>{parsed.best.champion_name}</div>
+                    <div style={styles.bestName}>
+                      {parsed.best.champion_name}
+                    </div>
                     <div style={styles.bestSub}>Best champion (recent)</div>
                   </div>
                   <div style={styles.readyPill}>READY</div>
@@ -463,25 +565,34 @@ export default function Analyzer() {
                 <div style={styles.bestGrid}>
                   <div style={styles.bestStat}>
                     <div style={styles.bestLabel}>Games</div>
-                    <div style={styles.bestValue}>{parsed.best.games ?? "—"}</div>
+                    <div style={styles.bestValue}>
+                      {parsed.best.games ?? "—"}
+                    </div>
                   </div>
                   <div style={styles.bestStat}>
                     <div style={styles.bestLabel}>Avg KDA</div>
-                    <div style={styles.bestValue}>{parsed.best.avg_kda ?? "—"}</div>
+                    <div style={styles.bestValue}>
+                      {parsed.best.avg_kda ?? "—"}
+                    </div>
                   </div>
                 </div>
               </div>
             ) : (
               <div style={styles.emptyBox}>
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>Not enough data yet</div>
-                Best champion breakdown will appear after more recent matches are available.
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>
+                  Not enough data yet
+                </div>
+                Best champion breakdown will appear after more recent matches are
+                available.
               </div>
             )}
           </div>
 
           <div style={{ marginTop: 18 }}>
             <div style={styles.sectionTitle}>Role distribution</div>
-            <div style={styles.sectionSub}>Based on recent matches — mini bar chart.</div>
+            <div style={styles.sectionSub}>
+              Based on recent matches — mini bar chart.
+            </div>
             <div style={{ marginTop: 10 }}>
               <RoleBars roles={parsed?.roles} />
             </div>
@@ -491,7 +602,8 @@ export default function Analyzer() {
             <div style={styles.policyBox}>
               <div style={styles.sectionTitle}>Policy & disclaimer</div>
               <div style={styles.sectionSub}>
-                Nexio.gg is not affiliated with, endorsed, sponsored, or approved by Riot Games.
+                Nexio.gg is not affiliated with, endorsed, sponsored, or
+                approved by Riot Games.
               </div>
               <div style={styles.policyChips}>
                 {[
@@ -512,13 +624,19 @@ export default function Analyzer() {
         </section>
 
         <footer style={styles.footer}>
-          <div style={styles.footerSmall}>© 2026 Nexio.gg</div>
+          <div style={styles.footerSmall}>©️ 2026 Nexio.gg</div>
           <div style={styles.footerLinks}>
-            <a href="/" style={styles.footerLink}>Home</a>
+            <a href="/" style={styles.footerLink}>
+              Home
+            </a>
             <span style={styles.dot}>•</span>
-            <a href="/terms" style={styles.footerLink}>Terms</a>
+            <a href="/terms" style={styles.footerLink}>
+              Terms
+            </a>
             <span style={styles.dot}>•</span>
-            <a href="/privacy" style={styles.footerLink}>Privacy</a>
+            <a href="/privacy" style={styles.footerLink}>
+              Privacy
+            </a>
           </div>
         </footer>
       </div>
@@ -564,11 +682,17 @@ const styles = {
     fontFamily: "ui-serif, Georgia, serif",
   },
   gradWord: {
-    background: "linear-gradient(90deg, rgba(124,58,237,1), rgba(59,130,246,1))",
+    background:
+      "linear-gradient(90deg, rgba(124,58,237,1), rgba(59,130,246,1))",
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
   },
-  lead: { margin: 0, maxWidth: 820, color: "rgba(232,238,252,0.72)", lineHeight: 1.6 },
+  lead: {
+    margin: 0,
+    maxWidth: 820,
+    color: "rgba(232,238,252,0.72)",
+    lineHeight: 1.6,
+  },
 
   card: {
     marginTop: 18,
@@ -581,12 +705,22 @@ const styles = {
   },
 
   // ✅ Overlap kesin yok: flex + wrap
-  formRow: { display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" },
+  formRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 12,
+    alignItems: "flex-end",
+  },
   fieldGrow: { flex: "1 1 520px", minWidth: 320 },
   fieldFixed: { flex: "0 0 260px", minWidth: 220 },
   btnFixed: { flex: "0 0 180px", minWidth: 160 },
 
-  label: { display: "block", fontSize: 12, color: "rgba(232,238,252,0.75)", marginBottom: 6 },
+  label: {
+    display: "block",
+    fontSize: 12,
+    color: "rgba(232,238,252,0.75)",
+    marginBottom: 6,
+  },
   input: {
     width: "100%",
     boxSizing: "border-box",
@@ -613,7 +747,8 @@ const styles = {
     padding: "12px 12px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.18)",
-    background: "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
+    background:
+      "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.88))",
     color: "#fff",
     fontWeight: 900,
   },
@@ -642,7 +777,11 @@ const styles = {
   },
   quickLeft: { display: "flex", alignItems: "center", gap: 8 },
   quickIcon: { opacity: 0.9 },
-  quickLabel: { fontSize: 12, fontWeight: 900, color: "rgba(232,238,252,0.75)" },
+  quickLabel: {
+    fontSize: 12,
+    fontWeight: 900,
+    color: "rgba(232,238,252,0.75)",
+  },
   quickChips: { display: "flex", gap: 10, flexWrap: "wrap" },
   chipBtn: {
     border: "1px solid rgba(255,255,255,0.12)",
@@ -675,7 +814,11 @@ const styles = {
     flexWrap: "wrap",
   },
   sectionTitle: { fontWeight: 900, fontSize: 13 },
-  sectionSub: { marginTop: 6, color: "rgba(232,238,252,0.70)", fontSize: 12 },
+  sectionSub: {
+    marginTop: 6,
+    color: "rgba(232,238,252,0.70)",
+    fontSize: 12,
+  },
   metaRow: {
     marginTop: 10,
     display: "flex",
@@ -710,8 +853,17 @@ const styles = {
     background: "rgba(255,255,255,0.03)",
     padding: 14,
   },
-  statTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  statTitle: { fontSize: 12, color: "rgba(232,238,252,0.72)", fontWeight: 900 },
+  statTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  statTitle: {
+    fontSize: 12,
+    color: "rgba(232,238,252,0.72)",
+    fontWeight: 900,
+  },
   statValue: { fontSize: 26, fontWeight: 900, marginTop: 8 },
   statSub: { marginTop: 6, fontSize: 12, color: "rgba(232,238,252,0.65)" },
   shareBtn: {
@@ -725,6 +877,88 @@ const styles = {
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
+  },
+
+  // ✅ AI Recap card (premium + safe)
+  aiCard: {
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.18)",
+    padding: 14,
+  },
+  aiHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  aiTitle: { fontWeight: 900, fontSize: 13 },
+  beta: {
+    marginLeft: 6,
+    fontSize: 11,
+    padding: "2px 6px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.06)",
+    opacity: 0.9,
+  },
+  aiSub: { marginTop: 4, fontSize: 12, color: "rgba(232,238,252,0.65)" },
+  copyBtnSmall: {
+    padding: "9px 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(0,0,0,0.22)",
+    color: "rgba(232,238,252,0.92)",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  aiBody: { marginTop: 10 },
+  aiMetaLine: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    color: "rgba(232,238,252,0.62)",
+    fontSize: 12,
+    marginBottom: 10,
+  },
+  aiSummary: {
+    margin: 0,
+    lineHeight: 1.7,
+    color: "rgba(232,238,252,0.90)",
+  },
+  aiGrid: {
+    marginTop: 12,
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gap: 12,
+  },
+  aiPanel: {
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.03)",
+    padding: 12,
+  },
+  aiLabel: { fontWeight: 900, fontSize: 12, marginBottom: 6 },
+  aiList: { paddingLeft: 18, margin: 0, color: "rgba(232,238,252,0.85)" },
+  aiListInline: {
+    paddingLeft: 18,
+    margin: 0,
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 10,
+    color: "rgba(232,238,252,0.85)",
+  },
+  aiLoading: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 14,
+    border: "1px dashed rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,0.03)",
+    color: "rgba(232,238,252,0.78)",
+    fontSize: 12,
+    lineHeight: 1.6,
   },
 
   noteBox: {
@@ -772,7 +1006,8 @@ const styles = {
     fontWeight: 900,
     color: "#fff",
     border: "1px solid rgba(255,255,255,0.14)",
-    background: "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
+    background:
+      "linear-gradient(135deg, rgba(124,58,237,0.9), rgba(59,130,246,0.85))",
   },
   bestName: { fontWeight: 900, fontSize: 16 },
   bestSub: { marginTop: 2, fontSize: 12, color: "rgba(232,238,252,0.65)" },
@@ -784,13 +1019,28 @@ const styles = {
     fontSize: 12,
     fontWeight: 900,
   },
-  bestGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, padding: 14 },
-  bestStat: { borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)", padding: 12 },
+  bestGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
+    padding: 14,
+  },
+  bestStat: {
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.03)",
+    padding: 12,
+  },
   bestLabel: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
   bestValue: { marginTop: 6, fontWeight: 900, fontSize: 18 },
 
   rolesWrap: { display: "grid", gap: 12 },
-  roleRow: { display: "grid", gridTemplateColumns: "160px 1fr", gap: 14, alignItems: "center" },
+  roleRow: {
+    display: "grid",
+    gridTemplateColumns: "160px 1fr",
+    gap: 14,
+    alignItems: "center",
+  },
   roleLeft: { display: "grid", gap: 4 },
   roleName: { fontWeight: 900, fontSize: 13 },
   roleMeta: { fontSize: 12, color: "rgba(232,238,252,0.65)" },
@@ -804,14 +1054,38 @@ const styles = {
   roleBarInner: {
     height: "100%",
     borderRadius: 999,
-    background: "linear-gradient(90deg, rgba(124,58,237,0.95), rgba(34,211,238,0.85))",
+    background:
+      "linear-gradient(90deg, rgba(124,58,237,0.95), rgba(34,211,238,0.85))",
   },
 
-  policyBox: { borderRadius: 16, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(0,0,0,0.18)", padding: 14 },
+  policyBox: {
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.18)",
+    padding: 14,
+  },
   policyChips: { display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 },
-  policyChip: { padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", fontSize: 12, fontWeight: 800, color: "rgba(232,238,252,0.88)" },
+  policyChip: {
+    padding: "8px 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.06)",
+    fontSize: 12,
+    fontWeight: 800,
+    color: "rgba(232,238,252,0.88)",
+  },
 
-  footer: { marginTop: 18, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", color: "rgba(232,238,252,0.60)", fontSize: 12, paddingBottom: 10 },
+  footer: {
+    marginTop: 18,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+    color: "rgba(232,238,252,0.60)",
+    fontSize: 12,
+    paddingBottom: 10,
+  },
   footerSmall: { opacity: 0.9 },
   footerLinks: { display: "flex", alignItems: "center", gap: 10 },
   footerLink: { color: "rgba(232,238,252,0.78)", textDecoration: "none" },
